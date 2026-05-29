@@ -9,12 +9,14 @@ import {
   Users,
   FileText,
   ClipboardList,
+  Bot,
   LogOut,
   Building2,
 } from "lucide-react"
 
 const navItems = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
+  { href: "/assistant", label: "AIアシスタント", icon: Bot },
   { href: "/gmail", label: "Gmail", icon: Mail },
   { href: "/customers", label: "顧客管理", icon: Users },
   { href: "/estimates", label: "見積書", icon: FileText },
