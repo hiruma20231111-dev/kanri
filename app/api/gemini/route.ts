@@ -10,6 +10,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { type } = body
 
+  if (!process.env.GEMINI_API_KEY) {
+    return NextResponse.json({ error: "AI分析機能は現在準備中です（GEMINI_API_KEY未設定）" }, { status: 503 })
+  }
+
   try {
     switch (type) {
       case "meeting": {

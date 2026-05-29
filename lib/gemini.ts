@@ -1,11 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-
-export const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash",
-  generationConfig: { temperature: 0.7 },
-})
+function getModel() {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY が設定されていません")
+  }
+  return new GoogleGenerativeAI(process.env.GEMINI_API_KEY).getGenerativeModel({
+    model: "gemini-1.5-flash",
+    generationConfig: { temperature: 0.7 },
+  })
+}
 
 export const KPD_PRODUCTS = `
 【関西ぱどの商材一覧】
@@ -58,7 +61,7 @@ ${KPD_PRODUCTS}
   "keyPoints": ["ポイント1", "ポイント2", "ポイント3"]
 }
 `
-  const result = await geminiModel.generateContent(prompt)
+  const result = await getModel().generateContent(prompt)
   const text = result.response.text().trim()
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
@@ -100,7 +103,7 @@ ${KPD_PRODUCTS}
   "replyDraft": "返信文案（丁寧で簡潔な日本語）"
 }
 `
-  const result = await geminiModel.generateContent(prompt)
+  const result = await getModel().generateContent(prompt)
   const text = result.response.text().trim()
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
@@ -142,7 +145,7 @@ JSON形式で回答（コードブロックなし）:
   "body": "本文"
 }
 `
-  const result = await geminiModel.generateContent(prompt)
+  const result = await getModel().generateContent(prompt)
   const text = result.response.text().trim()
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
