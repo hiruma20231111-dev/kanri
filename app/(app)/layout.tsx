@@ -4,8 +4,16 @@ import { redirect } from "next/navigation"
 import { Sidebar } from "@/components/Sidebar"
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await getServerSession(authOptions)
-  if (!session) redirect("/login")
+  if (!process.env.NEXTAUTH_SECRET || !process.env.GOOGLE_CLIENT_ID) {
+    redirect("/setup")
+  }
+
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) redirect("/login")
+  } catch {
+    redirect("/setup")
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
