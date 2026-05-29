@@ -11,6 +11,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   try {
     const session = await getServerSession(authOptions)
     if (!session) redirect("/login")
+    // リフレッシュ失敗時は再ログインさせる
+    if ((session as any).error === "RefreshAccessTokenError") redirect("/login")
   } catch {
     redirect("/setup")
   }
