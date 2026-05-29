@@ -69,12 +69,13 @@ export default function SetupPage() {
               Vercel ダッシュボード → Settings → Environment Variables で以下を追加
             </p>
             <div className="bg-slate-900 rounded-xl p-4 text-xs font-mono text-slate-300 space-y-1.5">
-              <p><span className="text-amber-400">NEXTAUTH_SECRET</span>=B/elh0a99oaelyXkiKwrRNR2Pf+o6VzD5RZWFv+ud3E=</p>
+              <p className="text-slate-500"># openssl rand -base64 32 で生成した値を設定</p>
+              <p><span className="text-amber-400">NEXTAUTH_SECRET</span>=<span className="text-slate-500">（ランダム文字列 32バイト以上）</span></p>
               <p><span className="text-amber-400">NEXTAUTH_URL</span>=https://kanri-wheat.vercel.app</p>
-              <p><span className="text-blue-400">GOOGLE_CLIENT_ID</span>=（Google CloudのID）</p>
-              <p><span className="text-blue-400">GOOGLE_CLIENT_SECRET</span>=（Google Cloudのシークレット）</p>
-              <p><span className="text-green-400">GEMINI_API_KEY</span>=（AI StudioのAPIキー）</p>
-              <p><span className="text-slate-500">GOOGLE_SHEETS_ID</span>=（任意・後で設定可）</p>
+              <p><span className="text-blue-400">GOOGLE_CLIENT_ID</span>=<span className="text-slate-500">（Google CloudのOAuth クライアントID）</span></p>
+              <p><span className="text-blue-400">GOOGLE_CLIENT_SECRET</span>=<span className="text-slate-500">（Google Cloudのシークレット）</span></p>
+              <p><span className="text-green-400">GEMINI_API_KEY</span>=<span className="text-slate-500">（AI StudioのAPIキー）</span></p>
+              <p><span className="text-slate-500">GOOGLE_SHEETS_ID</span>=<span className="text-slate-500">（任意・後で設定可）</span></p>
             </div>
           </div>
 

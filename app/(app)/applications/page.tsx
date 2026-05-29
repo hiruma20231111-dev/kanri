@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ClipboardList, Plus, Trash2, Printer } from "lucide-react"
 
 const OFFICES = {
@@ -52,6 +52,16 @@ export default function ApplicationsPage() {
   const [items, setItems] = useState<LineItem[]>(() =>
     Array.from({ length: INITIAL_ROWS }, newItem)
   )
+
+  // 顧客管理ページからのURLパラメータで自動入力
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    if (p.get("company"))  setCustomerName(p.get("company")!)
+    if (p.get("contact"))  setOrderPerson(p.get("contact")!)
+    if (p.get("tel"))      setOrderTel(p.get("tel")!)
+    if (p.get("address"))  setOrderAddress(p.get("address")!)
+    if (p.get("company"))  setOrderCompany(p.get("company")!)
+  }, [])
 
   const officeData = OFFICES[office]
 

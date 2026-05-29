@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Customer } from "@/types"
+import { useRouter } from "next/navigation"
 import {
   Users,
   Plus,
@@ -10,6 +11,7 @@ import {
   Mail,
   Phone,
   Sparkles,
+  ClipboardList,
   X,
   CheckCircle2,
 } from "lucide-react"
@@ -24,6 +26,7 @@ const STATUS_LABELS = {
 }
 
 export default function CustomersPage() {
+  const router = useRouter()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -215,6 +218,21 @@ export default function CustomersPage() {
                                 {action}
                               </button>
                             ))}
+                            <button
+                              onClick={() => {
+                                const p = new URLSearchParams({
+                                  company: c.companyName,
+                                  contact: c.contactName,
+                                  tel: c.phone || "",
+                                  address: c.address || "",
+                                })
+                                router.push(`/applications?${p.toString()}`)
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition-colors"
+                            >
+                              <ClipboardList className="w-3 h-3" />
+                              申込書作成
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -239,6 +257,7 @@ export default function CustomersPage() {
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">担当者</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">ステータス</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">次のアクション</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -252,6 +271,23 @@ export default function CustomersPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-slate-500 text-xs hidden md:table-cell">{c.nextAction}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => {
+                              const p = new URLSearchParams({
+                                company: c.companyName,
+                                contact: c.contactName,
+                                tel: c.phone || "",
+                                address: c.address || "",
+                              })
+                              router.push(`/applications?${p.toString()}`)
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition-colors"
+                          >
+                            <ClipboardList className="w-3 h-3" />
+                            申込書作成
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
