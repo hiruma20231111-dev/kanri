@@ -1,11 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
-// フリー枠の別クォータを持つモデルを幅広く試す
+// 新APIキー対応モデル（2025年以降の新プロジェクト向け）
 const MODEL_CANDIDATES = [
-  "gemini-1.5-flash-8b",   // フリー枠最大・軽量
-  "gemini-2.0-flash-lite", // フリー枠大
-  "gemini-1.5-flash",      // フリー枠大
-  "gemini-2.0-flash",      // 標準
+  "gemini-2.5-flash-lite", // 軽量・高速
+  "gemini-2.5-flash",      // 標準
+  "gemini-flash-latest",   // エイリアス
 ]
 
 // retryDelay ヘッダーから待機秒数を抽出
