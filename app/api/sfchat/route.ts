@@ -72,42 +72,50 @@ export async function POST(req: NextRequest) {
     try {
       // 試行1: id_tokenでスレッド返信
       if (idToken) {
-        const res = await fetch(`${SFCHAT_BASE}/messages/${parentId}/replies`, {
+        const r1 = await fetch(`${SFCHAT_BASE}/messages/${parentId}/replies`, {
           method: "POST",
           headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
           body: JSON.stringify({ body: messageBody }),
         })
-        if (res.ok) {
-          const data = await res.json().catch(() => ({ ok: true }))
+        const t1 = await r1.text()
+        console.log(`[sfchat] 試行1 id_token /messages/${parentId}/replies → ${r1.status}`, t1.slice(0, 300))
+        if (r1.ok) {
+          const data = JSON.parse(t1)
           return NextResponse.json({ ok: true, data, method: "thread_id_token" })
         }
       }
 
       // 試行2: sfchat_keyでスレッド返信
-      let res = await fetch(`${SFCHAT_BASE}/messages/${parentId}/replies`, {
+      const r2 = await fetch(`${SFCHAT_BASE}/messages/${parentId}/replies`, {
         method: "POST",
         headers: sfHeaders(),
         body: JSON.stringify({ body: messageBody }),
       })
+      const t2 = await r2.text()
+      console.log(`[sfchat] 試行2 sfchat_key /messages/${parentId}/replies → ${r2.status}`, t2.slice(0, 300))
+      if (r2.ok) {
+        return NextResponse.json({ ok: true, data: JSON.parse(t2), method: "thread_sfchat" })
+      }
 
-      // 試行3: sfchat_key + parent_idでチャンネル投稿（フォールバック）
-      if (!res.ok && channelId) {
-        res = await fetch(`${SFCHAT_BASE}/channels/${channelId}/messages`, {
+      // 試行3: sfchat_key + parent_idでチャンネル投稿
+      if (channelId) {
+        const r3 = await fetch(`${SFCHAT_BASE}/channels/${channelId}/messages`, {
           method: "POST",
           headers: sfHeaders(),
           body: JSON.stringify({ body: messageBody, parent_id: parentId }),
         })
+        const t3 = await r3.text()
+        console.log(`[sfchat] 試行3 channel+parent_id → ${r3.status}`, t3.slice(0, 300))
+        if (r3.ok) {
+          const data = JSON.parse(t3)
+          console.log(`[sfchat] 試行3 response parent_id:`, data?.parent_id, "id:", data?.id)
+          return NextResponse.json({ ok: true, data, method: "channel_fallback" })
+        }
+        const errText = t3
+        return NextResponse.json({ error: `送信失敗 (${r3.status})`, detail: errText }, { status: r3.status })
       }
 
-      if (!res.ok) {
-        const text = await res.text()
-        return NextResponse.json(
-          { error: `送信失敗 (${res.status})`, detail: text },
-          { status: res.status }
-        )
-      }
-      const data = await res.json().catch(() => ({ ok: true }))
-      return NextResponse.json({ ok: true, data })
+      return NextResponse.json({ error: `スレッド返信失敗 (${r2.status})`, detail: t2 }, { status: r2.status })
     } catch (error: any) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
