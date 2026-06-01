@@ -1,42 +1,46 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
-// モデルを順番に試す（過負荷時のフォールバック）
-const MODEL_CANDIDATES = ["gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.0-flash"]
+// フリー枠の別クォータを持つモデルを幅広く試す
+const MODEL_CANDIDATES = [
+  "gemini-1.5-flash-8b",   // フリー枠最大・軽量
+  "gemini-2.0-flash-lite", // フリー枠大
+  "gemini-1.5-flash",      // フリー枠大
+  "gemini-2.0-flash",      // 標準
+]
 
-async function generateWithRetry(prompt: string, retries = 3): Promise<string> {
+// retryDelay ヘッダーから待機秒数を抽出
+function parseRetryDelay(msg: string): number {
+  const m = msg.match(/"retryDelay"\s*:\s*"(\d+)s"/)
+  return m ? parseInt(m[1], 10) * 1000 : 5000
+}
+
+async function generateWithRetry(prompt: string): Promise<string> {
   if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY が設定されていません")
   const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
   let lastError: Error | null = null
-  for (let attempt = 0; attempt < retries; attempt++) {
-    const modelName = MODEL_CANDIDATES[attempt % MODEL_CANDIDATES.length]
+  for (let attempt = 0; attempt < MODEL_CANDIDATES.length; attempt++) {
+    const modelName = MODEL_CANDIDATES[attempt]
     try {
       const model = ai.getGenerativeModel({ model: modelName, generationConfig: { temperature: 0.7 } })
       const result = await model.generateContent(prompt)
       return result.response.text().trim()
     } catch (e: any) {
       lastError = e
-      const is503 = e.message?.includes("503") || e.message?.includes("Service Unavailable") || e.message?.includes("overloaded")
-      const is429 = e.message?.includes("429") || e.message?.includes("quota")
-      if ((is503 || is429) && attempt < retries - 1) {
-        // 指数バックオフ: 1s, 3s
-        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)))
-        continue
+      const is503 = e.message?.includes("503") || e.message?.includes("overloaded")
+      const is429 = e.message?.includes("429") || e.message?.includes("quota") || e.message?.includes("rate")
+      if (is503 || is429) {
+        if (attempt < MODEL_CANDIDATES.length - 1) {
+          // 次のモデルへ切り替え前に少し待つ
+          const delay = is429 ? Math.min(parseRetryDelay(e.message), 8000) : 2000
+          await new Promise(r => setTimeout(r, delay))
+          continue
+        }
       }
       throw e
     }
   }
-  throw lastError || new Error("AI分析に失敗しました")
-}
-
-function getModel() {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY が設定されていません")
-  }
-  return new GoogleGenerativeAI(process.env.GEMINI_API_KEY).getGenerativeModel({
-    model: "gemini-flash-latest",
-    generationConfig: { temperature: 0.7 },
-  })
+  throw lastError || new Error("AI分析に失敗しました（全モデル試行済み）")
 }
 
 export const KPD_PRODUCTS = `
@@ -90,8 +94,7 @@ ${KPD_PRODUCTS}
   "keyPoints": ["ポイント1", "ポイント2", "ポイント3"]
 }
 `
-  const result = await getModel().generateContent(prompt)
-  const text = result.response.text().trim()
+  const text = await generateWithRetry(prompt)
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
     return JSON.parse(cleaned)
@@ -211,8 +214,7 @@ JSON形式で回答（コードブロックなし）:
   "body": "本文"
 }
 `
-  const result = await getModel().generateContent(prompt)
-  const text = result.response.text().trim()
+  const text = await generateWithRetry(prompt)
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
     return JSON.parse(cleaned)
