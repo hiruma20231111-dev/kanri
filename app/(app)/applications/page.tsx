@@ -10,11 +10,11 @@ const OFFICES = {
     tel: "TEL.06-6729-8101　FAX.06-6729-8102",
     payment: "末日締め翌月末支払い",
   },
-  nishiku: {
-    label: "大阪西区オフィス",
-    address: "大阪市西区靭本町1丁目6-6　大阪華東ビル3F",
+  hplp: {
+    label: "HP/LP",
+    address: "東大阪市下小阪2-14-16　天正八戸ノ里ビル3F",
     tel: "TEL.06-6729-8101　FAX.06-6729-8102",
-    payment: "20日締め翌月末支払い",
+    payment: "着手時50%・中間30%・完成納品時20%",
   },
 } as const
 
@@ -179,14 +179,14 @@ export default function ApplicationsPage() {
               type="text"
               value={expiryDate}
               onChange={e => setExpiryDate(e.target.value)}
-              placeholder={office === "nishiku" ? "発行日より1カ月" : "YYYY/MM/DD"}
+              placeholder={office === "hplp" ? "発行日より1カ月" : "YYYY/MM/DD"}
               className={`w-40 ${fieldCls}`}
             />
           </div>
         </div>
 
         {/* 西区フォーマット：合計金額を上部に表示 */}
-        {office === "nishiku" && (
+        {office === "hplp" && (
           <div className="mb-4 text-sm flex items-center gap-3">
             <span className="font-semibold">合計金額(税込）</span>
             <span className="text-lg font-bold">

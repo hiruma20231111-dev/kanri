@@ -1,11 +1,40 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
+// モデルを順番に試す（過負荷時のフォールバック）
+const MODEL_CANDIDATES = ["gemini-2.0-flash-lite", "gemini-flash-latest", "gemini-2.0-flash"]
+
+async function generateWithRetry(prompt: string, retries = 3): Promise<string> {
+  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY が設定されていません")
+  const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+
+  let lastError: Error | null = null
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const modelName = MODEL_CANDIDATES[attempt % MODEL_CANDIDATES.length]
+    try {
+      const model = ai.getGenerativeModel({ model: modelName, generationConfig: { temperature: 0.7 } })
+      const result = await model.generateContent(prompt)
+      return result.response.text().trim()
+    } catch (e: any) {
+      lastError = e
+      const is503 = e.message?.includes("503") || e.message?.includes("Service Unavailable") || e.message?.includes("overloaded")
+      const is429 = e.message?.includes("429") || e.message?.includes("quota")
+      if ((is503 || is429) && attempt < retries - 1) {
+        // 指数バックオフ: 1s, 3s
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)))
+        continue
+      }
+      throw e
+    }
+  }
+  throw lastError || new Error("AI分析に失敗しました")
+}
+
 function getModel() {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY が設定されていません")
   }
   return new GoogleGenerativeAI(process.env.GEMINI_API_KEY).getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: { temperature: 0.7 },
   })
 }
@@ -103,8 +132,7 @@ ${KPD_PRODUCTS}
   "replyDraft": "返信文案（丁寧で簡潔な日本語）"
 }
 `
-  const result = await getModel().generateContent(prompt)
-  const text = result.response.text().trim()
+  const text = await generateWithRetry(prompt)
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
     return JSON.parse(cleaned)
@@ -114,6 +142,44 @@ ${KPD_PRODUCTS}
       category: "その他",
       priority: "medium" as const,
       requiredAction: "手動で確認してください",
+      replyDraft: "",
+    }
+  }
+}
+
+export async function analyzeMention(
+  senderName: string,
+  channelName: string,
+  body: string
+) {
+  const cleanBody = body.replace(/<@[a-f0-9-]+>/g, "@ユーザー").replace(/\n+/g, "\n").trim()
+  const prompt = `
+あなたは関西ぱどの営業担当・比留間信さんのアシスタントです。
+以下の社内チャットのメンションを分析し、JSON形式で回答してください。
+
+【メンション情報】
+送信者: ${senderName}
+チャンネル: ${channelName}
+本文:
+${cleanBody}
+
+以下のJSON形式で回答（コードブロックなし、JSONのみ）:
+{
+  "summary": "メッセージの要約（50文字以内）",
+  "requiredAction": "比留間さんに求められているアクション（40文字以内）",
+  "priority": "high/medium/low",
+  "replyDraft": "比留間さんとしての自然な返信文案（敬語・簡潔に）"
+}
+`
+  const text = await generateWithRetry(prompt)
+  try {
+    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
+    return JSON.parse(cleaned)
+  } catch {
+    return {
+      summary: "分析できませんでした",
+      requiredAction: "内容を確認してください",
+      priority: "medium" as const,
       replyDraft: "",
     }
   }

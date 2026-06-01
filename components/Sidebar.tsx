@@ -12,11 +12,17 @@ import {
   Bot,
   LogOut,
   Building2,
+  MessageSquare,
+  BarChart2,
+  PhoneCall,
 } from "lucide-react"
 
 const navItems = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/assistant", label: "AIアシスタント", icon: Bot },
+  { href: "/clients", label: "顧客稼働状況", icon: BarChart2 },
+  { href: "/newleads", label: "東大阪新規リスト", icon: PhoneCall },
+  { href: "/mentions", label: "kp-chatメンション", icon: MessageSquare },
   { href: "/gmail", label: "Gmail", icon: Mail },
   { href: "/customers", label: "顧客管理", icon: Users },
   { href: "/estimates", label: "見積書", icon: FileText },
@@ -28,7 +34,7 @@ export function Sidebar() {
   const { data: session } = useSession()
 
   return (
-    <div className="flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 z-30">
+    <div className="flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 z-30 print:hidden">
       {/* ロゴ */}
       <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-700">
         <div className="bg-blue-500 rounded-lg p-2">

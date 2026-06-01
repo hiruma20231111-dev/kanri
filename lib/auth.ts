@@ -57,6 +57,7 @@ export const authOptions: NextAuthOptions = {
         return {
           ...token,
           accessToken: account.access_token,
+          idToken: account.id_token,
           refreshToken: account.refresh_token,
           expiresAt: account.expires_at,
         }
@@ -70,6 +71,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       ;(session as any).accessToken = token.accessToken
+      ;(session as any).idToken = token.idToken
       if (token.error) {
         ;(session as any).error = token.error
       }

@@ -47,17 +47,22 @@ export async function POST(req: NextRequest) {
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
+      model: "gemini-flash-latest",
       systemInstruction: SECRETARY_SYSTEM,
       generationConfig: { temperature: 0.8, maxOutputTokens: 2048 },
     })
 
-    const history = (messages as { role: string; content: string }[])
+    const rawHistory = (messages as { role: string; content: string }[])
       .slice(0, -1)
       .map((m) => ({
         role: m.role === "user" ? "user" : "model",
         parts: [{ text: m.content }],
       }))
+    // Gemini requires history to start with 'user'.
+    // firstUserIdx === -1 → no user messages yet → pass empty history
+    // firstUserIdx > 0   → leading model messages (e.g. initial greeting) → slice them off
+    const firstUserIdx = rawHistory.findIndex(m => m.role === "user")
+    const history = firstUserIdx >= 0 ? rawHistory.slice(firstUserIdx) : []
 
     const lastMessage = messages[messages.length - 1].content
 
