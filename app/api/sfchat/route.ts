@@ -95,12 +95,12 @@ export async function POST(req: NextRequest) {
       const err2Status = res2.status
       const err2Body = await res2.text()
 
-      // 試行3: チャンネルへのメッセージ投稿（フォールバック）
+      // 試行3: parentId（キャメルケース）でスレッド返信
       if (channelId) {
         const res3 = await fetch(`${SFCHAT_BASE}/channels/${channelId}/messages`, {
           method: "POST",
           headers: sfHeaders(),
-          body: JSON.stringify({ body: messageBody, parent_id: parentId }),
+          body: JSON.stringify({ body: messageBody, parentId: parentId }),
         })
         if (res3.ok) {
           const data = await res3.json().catch(() => ({ ok: true }))
