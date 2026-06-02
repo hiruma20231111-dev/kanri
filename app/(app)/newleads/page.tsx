@@ -18,12 +18,33 @@ const SHEET_URL        = "https://docs.google.com/spreadsheets/d/14Burb_XpKRI3Rr
 /* 列インデックス（0-based） */
 const C = { 日付:0,担当:1,企業:2,電話:3,SF:4,商材:5,エリア:6,業種:7,架電結果:8,商談予定:9,受注日:10,商談結果:11,金額:12,備考:13 }
 
-/* 日付変換 */
 function toIso(jp: string)  { return jp.replace(/\//g, "-") }
 function toJp(iso: string)  { return iso.replace(/-/g, "/") }
 function todayJp()          { return new Date().toLocaleDateString("ja-JP", { year:"numeric",month:"2-digit",day:"2-digit" }).replace(/\//g,"/") }
 
 interface LeadRow { rowIndex: number; data: string[] }
+
+/* ─── 編集フィールドの型定義 ─── */
+interface EditFieldDef {
+  key: string
+  label: string
+  type: "select" | "date" | "number" | "text"
+  opts?: string[]
+  col: number
+}
+
+function buildEditFields(eriaOptions: string[], gyoshuOptions: string[]): EditFieldDef[] {
+  return [
+    { key:"エリア",  label:"エリア",       type: eriaOptions.length > 0 ? "select" : "text",   opts: eriaOptions,    col: C.エリア },
+    { key:"業種",    label:"業種",         type: gyoshuOptions.length > 0 ? "select" : "text", opts: gyoshuOptions,  col: C.業種 },
+    { key:"架電結果",label:"架電結果",     type: "select",  opts: KAKEDEN_OPTIONS,              col: C.架電結果 },
+    { key:"商談予定",label:"商談予定日",   type: "date",                                        col: C.商談予定 },
+    { key:"受注日",  label:"受注日",       type: "date",                                        col: C.受注日 },
+    { key:"商談結果",label:"商談結果",     type: "select",  opts: SHODAN_OPTIONS,               col: C.商談結果 },
+    { key:"金額",    label:"初回受注金額", type: "number",                                      col: C.金額 },
+    { key:"備考",    label:"備考",         type: "text",                                        col: C.備考 },
+  ]
+}
 
 function emptyForm(tantoDefault = "") {
   return { 日付:todayJp(),担当:tantoDefault,企業:"",電話:"",SF:"済〇",商材:"",エリア:"",業種:"",架電結果:"",商談予定:"",受注日:"",商談結果:"",金額:"",備考:"" }
@@ -31,9 +52,8 @@ function emptyForm(tantoDefault = "") {
 
 type EditState = Record<string, string>
 
-/* テーブルヘッダー */
 const TABLE_HEADERS = ["架電日","担当","企業・店舗名","電話番号","SF","想定商材","エリア","業種","架電結果","商談予定日","受注日","商談結果","初回金額","備考"]
-const EDITABLE_FROM = C.エリア // 列6以降が編集可能
+const EDITABLE_FROM = C.エリア
 
 /* ─── コンポーネント ───────────────────── */
 export default function NewLeadsPage() {
@@ -60,7 +80,6 @@ export default function NewLeadsPage() {
   const [step2Forms,  setStep2Forms]  = useState<Record<number,string[]>>({})
   const [step2Saving, setStep2Saving] = useState<number | null>(null)
 
-  /* ログインユーザー名をフィルターと担当デフォルトに反映 */
   const userName = session?.user?.name || ""
   useEffect(() => {
     if (userName && !filterTanto) setFilterTanto(userName)
@@ -94,7 +113,6 @@ export default function NewLeadsPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  /* ── 新規追加 ── */
   function formToRow(f: typeof form): string[] {
     return [f.日付,f.担当,f.企業,f.電話,f.SF,f.商材,f.エリア,f.業種,f.架電結果,f.商談予定,f.受注日,f.商談結果,f.金額,f.備考]
   }
@@ -122,11 +140,10 @@ export default function NewLeadsPage() {
     finally { setSaving(false) }
   }
 
-  /* ── 行編集：開始 ── */
   function openEdit(row: LeadRow) {
     const d = row.data
     const s: EditState = {}
-    EDIT_FIELDS(eriaOptions, gyoshuOptions).forEach(f => {
+    buildEditFields(eriaOptions, gyoshuOptions).forEach(f => {
       const v = d[f.col] || ""
       s[f.key] = f.type === "date" ? toIso(v) : v
     })
@@ -135,13 +152,12 @@ export default function NewLeadsPage() {
     setStep2Open(null)
   }
 
-  /* ── 行編集：保存 ── */
   async function saveEdit(row: LeadRow) {
     setEditSaving(true)
     try {
       const newData = [...row.data]
       while (newData.length < 14) newData.push("")
-      EDIT_FIELDS(eriaOptions, gyoshuOptions).forEach(f => {
+      buildEditFields(eriaOptions, gyoshuOptions).forEach(f => {
         const v = editState[f.key] || ""
         newData[f.col] = f.type === "date" ? toJp(v) : v
       })
@@ -173,7 +189,6 @@ export default function NewLeadsPage() {
     finally { setEditSaving(false) }
   }
 
-  /* ── ステップ2保存 ── */
   async function saveStep2(row: LeadRow) {
     setStep2Saving(row.rowIndex)
     try {
@@ -205,13 +220,11 @@ export default function NewLeadsPage() {
     ? shinkiRows.filter(r => (r.data[C.担当] || "").includes(filterTanto))
     : shinkiRows
 
-  /* ── スタイル ── */
   const inputCls  = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
   const labelCls  = "text-xs font-semibold text-slate-500 mb-1 block"
   const selectCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
 
-  /* フォームのフィールド定義（エリア・業種はAPIから取得したselect） */
-  const FORM_FIELDS = [
+  const FORM_FIELDS: Array<{ k: string; label: string; type: string; opts?: string[] }> = [
     { k:"日付",    label:"架電日",        type:"date" },
     { k:"担当",    label:"担当",          type:"text" },
     { k:"企業",    label:"企業・店舗名 *", type:"text" },
@@ -228,10 +241,11 @@ export default function NewLeadsPage() {
     { k:"備考",    label:"備考",          type:"text" },
   ]
 
+  const editFields = buildEditFields(eriaOptions, gyoshuOptions)
+
   return (
     <div className="p-6 max-w-[1400px] mx-auto">
 
-      {/* ヘッダー */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center">
@@ -260,7 +274,6 @@ export default function NewLeadsPage() {
         </div>
       </div>
 
-      {/* トースト */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
           toast.type === "ok" ? "bg-green-600 text-white" : "bg-red-600 text-white"
@@ -270,14 +283,12 @@ export default function NewLeadsPage() {
         </div>
       )}
 
-      {/* エラー */}
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
         </div>
       )}
 
-      {/* 新規追加フォーム */}
       {showForm && (
         <div className="mb-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
@@ -285,18 +296,18 @@ export default function NewLeadsPage() {
             <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            {FORM_FIELDS.map(({ k, label, type, opts }: any) => (
+            {FORM_FIELDS.map(({ k, label, type, opts }) => (
               <div key={k}>
                 <label className={labelCls}>{label}</label>
                 {type === "select" ? (
                   <select value={(form as any)[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} className={selectCls}>
                     <option value="">選択...</option>
-                    {opts?.map((o: string) => <option key={o} value={o}>{o}</option>)}
+                    {opts?.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 ) : type === "datalist" ? (
                   <>
                     <input list={`dl-${k}`} value={(form as any)[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} className={inputCls} placeholder="入力または選択" />
-                    <datalist id={`dl-${k}`}>{opts?.map((o: string) => <option key={o} value={o} />)}</datalist>
+                    <datalist id={`dl-${k}`}>{opts?.map(o => <option key={o} value={o} />)}</datalist>
                   </>
                 ) : (
                   <input type={type} value={(form as any)[k]}
@@ -307,7 +318,6 @@ export default function NewLeadsPage() {
             ))}
           </div>
 
-          {/* ステップ2追加項目（新規追加時） */}
           {form.架電結果 === STEP2_TRIGGER && step2ExtraHeaders.length > 0 && (
             <div className="mt-4 pt-4 border-t border-teal-200 bg-teal-50 rounded-xl p-4">
               <p className="text-sm font-semibold text-teal-700 mb-3">📋 ステップ2追加項目</p>
@@ -334,7 +344,6 @@ export default function NewLeadsPage() {
         </div>
       )}
 
-      {/* ローディング */}
       {loading && (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-6 h-6 text-teal-500 animate-spin" />
@@ -342,7 +351,6 @@ export default function NewLeadsPage() {
         </div>
       )}
 
-      {/* テーブル */}
       {!loading && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
@@ -367,7 +375,6 @@ export default function NewLeadsPage() {
                   const isEditing = editingRowIdx === row.rowIndex
                   const isS2Open  = step2Open === row.rowIndex
                   const s2Row     = step2Rows.find(s => s.data[C.企業] === d[C.企業])
-                  const editFields = EDIT_FIELDS(eriaOptions, gyoshuOptions)
 
                   return (
                     <>
@@ -376,14 +383,12 @@ export default function NewLeadsPage() {
                           isEditing ? "bg-blue-50 border-blue-200" : isStep2 ? "bg-teal-50/50" : "hover:bg-slate-50"
                         }`}
                       >
-                        {/* 列0-5: 読み取り専用（日付,担当,企業,電話,SF,商材） */}
                         {(d.slice(0, EDITABLE_FROM) as string[]).map((cell, ci) => (
                           <td key={ci} className="px-3 py-2 whitespace-nowrap text-slate-700">
                             {cell || <span className="text-slate-300">-</span>}
                           </td>
                         ))}
 
-                        {/* 列6以降: 編集可能（エリア,業種,架電結果,...,備考） */}
                         {isEditing ? (
                           editFields.map(f => (
                             <td key={f.key} className="px-2 py-1.5">
@@ -391,7 +396,7 @@ export default function NewLeadsPage() {
                                 <select value={editState[f.key] || ""} onChange={e => setEditState(p => ({ ...p, [f.key]: e.target.value }))}
                                   className="border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white min-w-[90px]">
                                   <option value="">-</option>
-                                  {(f.opts as string[] | undefined)?.map((o: string) => <option key={o} value={o}>{o}</option>)}
+                                  {f.opts?.map(o => <option key={o} value={o}>{o}</option>)}
                                 </select>
                               ) : f.type === "date" ? (
                                 <input type="date" value={editState[f.key] || ""}
@@ -424,7 +429,6 @@ export default function NewLeadsPage() {
                           ))
                         )}
 
-                        {/* 操作ボタン */}
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-1">
                             {isEditing ? (
@@ -468,7 +472,6 @@ export default function NewLeadsPage() {
                         </td>
                       </tr>
 
-                      {/* ステップ2展開パネル */}
                       {isS2Open && step2ExtraHeaders.length > 0 && (
                         <tr key={`s2-${row.rowIndex}`} className="bg-teal-50/70 border-b border-teal-100">
                           <td colSpan={15} className="px-4 py-4">
@@ -516,18 +519,4 @@ export default function NewLeadsPage() {
       )}
     </div>
   )
-}
-
-/* ── 編集フィールド定義（APIから取得した選択肢を受け取る） ── */
-function EDIT_FIELDS(eriaOptions: string[], gyoshuOptions: string[]) {
-  return [
-    { key:"エリア",  label:"エリア",       type: eriaOptions.length > 0 ? "select" : "text" as const,   opts: eriaOptions,    col: C.エリア },
-    { key:"業種",    label:"業種",         type: gyoshuOptions.length > 0 ? "select" : "text" as const, opts: gyoshuOptions,  col: C.業種 },
-    { key:"架電結果",label:"架電結果",     type:"select" as const, opts: KAKEDEN_OPTIONS,                col: C.架電結果 },
-    { key:"商談予定",label:"商談予定日",   type:"date" as const,                                         col: C.商談予定 },
-    { key:"受注日",  label:"受注日",       type:"date" as const,                                         col: C.受注日 },
-    { key:"商談結果",label:"商談結果",     type:"select" as const, opts: SHODAN_OPTIONS,                 col: C.商談結果 },
-    { key:"金額",    label:"初回受注金額", type:"number" as const,                                       col: C.金額 },
-    { key:"備考",    label:"備考",         type:"text" as const,                                         col: C.備考 },
-  ]
 }

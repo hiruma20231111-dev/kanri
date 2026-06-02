@@ -15,47 +15,47 @@ function makeAuth(accessToken: string) {
 
 /**
  * 指定セルのデータ検証（ドロップダウン）選択肢を取得。
- * ONE_OF_LIST → 直接取得
- * ONE_OF_RANGE → 参照先レンジをfetchして取得
- * 取得できない場合は空配列を返す（フロントでフォールバック）
+ * 失敗した場合は空配列を返す（メインデータ取得には影響しない）。
  */
 async function getValidationOptions(
-  sheets: ReturnType<typeof google.sheets>,
+  accessToken: string,
   spreadsheetId: string,
   sheetName: string,
   colLetter: string
 ): Promise<string[]> {
   try {
-    const res = await (sheets as any).spreadsheets.get({
+    const auth = new google.auth.OAuth2()
+    auth.setCredentials({ access_token: accessToken })
+    const sheets = google.sheets({ version: "v4", auth })
+
+    const res = await sheets.spreadsheets.get({
       spreadsheetId,
       includeGridData: true,
       ranges: [`${sheetName}!${colLetter}2`],
     })
+
     const cell =
       res.data.sheets?.[0]?.data?.[0]?.rowData?.[0]?.values?.[0]
-    const validation = cell?.dataValidation
+    const validation = (cell as any)?.dataValidation
     if (!validation) return []
 
     const condType = validation.condition?.type
     if (condType === "ONE_OF_LIST") {
       return (
         validation.condition.values
-          ?.map((v: any) => v.userEnteredValue as string)
+          ?.map((v: { userEnteredValue: string }) => v.userEnteredValue)
           .filter(Boolean) || []
       )
     }
     if (condType === "ONE_OF_RANGE") {
-      const rangeRef = (
-        validation.condition.values?.[0]?.userEnteredValue as string
-      )?.replace(/^=/, "")
+      const rangeRef = (validation.condition.values?.[0]?.userEnteredValue as string)
+        ?.replace(/^=/, "")
       if (rangeRef) {
-        const rangeRes = await (sheets as any).spreadsheets.values.get({
+        const rangeRes = await sheets.spreadsheets.values.get({
           spreadsheetId,
           range: rangeRef,
         })
-        return ((rangeRes.data.values as string[][]) || [])
-          .flat()
-          .filter(Boolean)
+        return ((rangeRes.data.values as string[][]) || []).flat().filter(Boolean)
       }
     }
     return []
@@ -75,14 +75,12 @@ export async function GET(req: NextRequest) {
   try {
     const sheets = makeAuth(accessToken)
 
-    const [shinkiRes, step2HdrRes, step2DataRes, eriaOpts, gyoshuOpts] =
-      await Promise.all([
-        sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_SHINKI}!A1:N` }),
-        sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_STEP2}!A1:AZ2` }),
-        sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_STEP2}!A2:AZ` }),
-        getValidationOptions(sheets, SHEET_ID, SHEET_SHINKI, "G"), // エリア
-        getValidationOptions(sheets, SHEET_ID, SHEET_SHINKI, "H"), // 業種
-      ])
+    // ── メインデータ取得（オリジナルと同じ構造・影響なし） ──
+    const [shinkiRes, step2HdrRes, step2DataRes] = await Promise.all([
+      sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_SHINKI}!A1:N` }),
+      sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_STEP2}!A1:AZ2` }),
+      sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_STEP2}!A2:AZ` }),
+    ])
 
     const shinkiValues    = shinkiRes.data.values   || []
     const step2HdrValues  = step2HdrRes.data.values  || []
@@ -91,18 +89,23 @@ export async function GET(req: NextRequest) {
     const shinkiHeaders     = shinkiValues[0] || []
     const shinkiRows        = shinkiValues.slice(1).map((row, i) => ({ rowIndex: i + 2, data: row }))
 
-    // ステップ2: row0=タイトル row1=入力例、L列以降が追加項目
     const step2AllHeaders   = step2HdrValues[0] || []
     const step2AllDesc      = step2HdrValues[1] || []
     const step2ExtraHeaders = step2AllHeaders.slice(13)
     const step2ExtraDesc    = step2AllDesc.slice(13)
     const step2Rows         = step2DataValues.map((row, i) => ({ rowIndex: i + 2, data: row }))
 
+    // ── バリデーション選択肢（メインデータ取得後・失敗しても空配列で継続） ──
+    const [eriaOptions, gyoshuOptions] = await Promise.all([
+      getValidationOptions(accessToken, SHEET_ID, SHEET_SHINKI, "G"),
+      getValidationOptions(accessToken, SHEET_ID, SHEET_SHINKI, "H"),
+    ])
+
     return NextResponse.json({
       shinkiHeaders, shinkiRows,
       step2AllHeaders, step2ExtraHeaders, step2ExtraDesc, step2Rows,
-      eriaOptions: eriaOpts,
-      gyoshuOptions: gyoshuOpts,
+      eriaOptions,
+      gyoshuOptions,
     })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
@@ -143,7 +146,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PUT: 既存行の更新（ステップ2追加入力など）
+// PUT: 既存行の更新
 export async function PUT(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
