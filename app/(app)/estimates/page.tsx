@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { FileText, Plus, Trash2, Printer } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { FileText, Plus, Trash2, Printer, X } from "lucide-react"
 
 /* ────────────────────────────────────
    共通ユーティリティ
@@ -17,29 +18,77 @@ const toReiwa = (d: Date) => {
 
 const yen = (n: number) => n === 0 ? "" : `¥${n.toLocaleString("ja-JP")}`
 
-const inputCls = "w-full px-1 py-0.5 focus:outline-none focus:bg-blue-50 bg-transparent"
-const lineCls = "border-b border-slate-300 focus:border-blue-500 focus:outline-none bg-transparent"
+const inputCls = "w-full px-2 py-1 focus:outline-none focus:bg-blue-50 bg-transparent"
+const lineCls  = "border-b border-slate-300 focus:border-blue-500 focus:outline-none bg-transparent"
+
+/* ─── 備考欄: 複数行対応 ─── */
+interface MemoRow { id: number; text: string }
+
+function MemoSection({ rows, onChange }: {
+  rows: MemoRow[]
+  onChange: (rows: MemoRow[]) => void
+}) {
+  const addRow = () => onChange([...rows, { id: uid(), text: "" }])
+  const delRow = (id: number) => { if (rows.length > 1) onChange(rows.filter(r => r.id !== id)) }
+  const updRow = (id: number, text: string) => onChange(rows.map(r => r.id === id ? { ...r, text } : r))
+
+  return (
+    <div className="mb-4 text-sm">
+      <span className="font-semibold">備考</span>
+      <div className="mt-1 space-y-0.5">
+        {rows.map((r, i) => (
+          <div key={r.id} className="flex items-center gap-1">
+            <span className="text-slate-400 text-xs w-4 text-right print:hidden">{i + 1}</span>
+            <input
+              value={r.text}
+              onChange={e => updRow(r.id, e.target.value)}
+              className={`flex-1 ${lineCls}`}
+              placeholder="備考を入力"
+            />
+            <button
+              onClick={() => delRow(r.id)}
+              disabled={rows.length <= 1}
+              className="print:hidden text-slate-300 hover:text-red-400 disabled:opacity-20 ml-1"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={addRow}
+        className="print:hidden flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1"
+      >
+        <Plus className="w-3 h-3" />行を追加
+      </button>
+    </div>
+  )
+}
 
 /* ────────────────────────────────────
    Template 1: 汎用御見積書
 ──────────────────────────────────── */
 interface GeneralRow { id: number; name: string; unitPrice: string; qty: string }
 
-function GeneralEstimate() {
+function GeneralEstimate({ defaultPerson }: { defaultPerson: string }) {
   const [customer, setCustomer] = useState("")
-  const [person, setPerson] = useState("比留間　信")
-  const [dateStr, setDateStr] = useState(toReiwa(new Date()))
-  const [no, setNo] = useState("1")
-  const [title, setTitle] = useState("")
-  const [memo, setMemo] = useState("")
-  const [payment, setPayment] = useState("貴社支払い条件に準ずる。")
-  const [expiry, setExpiry] = useState("ご提示より1か月間")
-  const [rows, setRows] = useState<GeneralRow[]>(() => Array.from({ length: 8 }, () => ({ id: uid(), name: "", unitPrice: "", qty: "" })))
+  const [person,   setPerson]   = useState("")
+  const [dateStr,  setDateStr]  = useState(toReiwa(new Date()))
+  const [no,       setNo]       = useState("1")
+  const [title,    setTitle]    = useState("")
+  const [payment,  setPayment]  = useState("貴社支払い条件に準ずる。")
+  const [expiry,   setExpiry]   = useState("ご提示より1か月間")
+  const [memoRows, setMemoRows] = useState<MemoRow[]>([{ id: uid(), text: "" }])
+  const [rows, setRows] = useState<GeneralRow[]>(() =>
+    Array.from({ length: 8 }, () => ({ id: uid(), name: "", unitPrice: "", qty: "" }))
+  )
 
-  const calcRow = (r: GeneralRow) => (parseFloat(r.unitPrice) || 0) * (parseFloat(r.qty) || 0)
+  useEffect(() => { if (defaultPerson && !person) setPerson(defaultPerson) }, [defaultPerson])
+
+  const calcRow  = (r: GeneralRow) => (parseFloat(r.unitPrice) || 0) * (parseFloat(r.qty) || 0)
   const subtotal = rows.reduce((s, r) => s + calcRow(r), 0)
-  const tax = Math.floor(subtotal * 0.1)
-  const total = subtotal + tax
+  const tax      = Math.floor(subtotal * 0.1)
+  const total    = subtotal + tax
 
   const upd = (id: number, f: keyof GeneralRow, v: string) =>
     setRows(p => p.map(r => r.id === id ? { ...r, [f]: v } : r))
@@ -67,7 +116,7 @@ function GeneralEstimate() {
             <input value={no} onChange={e => setNo(e.target.value)} className={`w-16 text-right ${lineCls}`} />
           </div>
           <p className="font-bold">(株)関西ぱど</p>
-          <input value={person} onChange={e => setPerson(e.target.value)} className={`w-32 text-right ${lineCls}`} />
+          <input value={person} onChange={e => setPerson(e.target.value)} className={`w-40 text-right ${lineCls}`} placeholder="担当者名" />
         </div>
       </div>
 
@@ -87,7 +136,7 @@ function GeneralEstimate() {
       </div>
 
       {/* 明細テーブル */}
-      <table className="w-full border-collapse text-sm mb-4">
+      <table className="w-full border-collapse text-sm mb-2">
         <thead>
           <tr className="bg-slate-100">
             {["品　　　名", "単　価", "数　量", "金　額"].map(h => (
@@ -111,7 +160,7 @@ function GeneralEstimate() {
                 <input type="number" value={r.qty} onChange={e => upd(r.id, "qty", e.target.value)}
                   className={`${inputCls} text-right px-2`} />
               </td>
-              <td className="border border-slate-300 px-3 py-1 text-right w-28">
+              <td className="border border-slate-300 px-3 py-1.5 text-right w-28">
                 {yen(calcRow(r))}
               </td>
               <td className="border border-slate-300 px-1 py-1 text-center print:hidden">
@@ -139,12 +188,8 @@ function GeneralEstimate() {
         <Plus className="w-3 h-3" />行を追加
       </button>
 
-      {/* 備考 */}
-      <div className="mb-4 text-sm">
-        <span className="font-semibold">備考　</span>
-        <input value={memo} onChange={e => setMemo(e.target.value)}
-          className={`w-full mt-1 ${lineCls}`} placeholder="備考欄" />
-      </div>
+      {/* 備考（複数行対応） */}
+      <MemoSection rows={memoRows} onChange={setMemoRows} />
 
       {/* 支払条件・有効期限 */}
       <div className="text-sm space-y-2">
@@ -168,22 +213,18 @@ interface MediaRow { id: number; version: string; content: string; area: string;
 
 function MediaEstimate() {
   const [customer, setCustomer] = useState("")
-  const [dateStr, setDateStr] = useState(toReiwa(new Date()))
-  const [subject, setSubject] = useState("まみたん誌面")
-  const [expiry, setExpiry] = useState("ご提案から1ヶ月間")
-  const [company, setCompany] = useState("")
-  const [contact, setContact] = useState("")
-  const [biko, setBiko] = useState("")
+  const [dateStr,  setDateStr]  = useState(toReiwa(new Date()))
+  const [subject,  setSubject]  = useState("まみたん誌面")
+  const [expiry,   setExpiry]   = useState("ご提案から1ヶ月間")
+  const [company,  setCompany]  = useState("")
+  const [contact,  setContact]  = useState("")
+  const [bikoRows, setBikoRows] = useState<MemoRow[]>([{ id: uid(), text: "" }])
   const [rows, setRows] = useState<MediaRow[]>(() => Array.from({ length: 5 }, () => ({
     id: uid(), version: "", content: "", area: "", listPrice: "", discount: "", memo: ""
   })))
 
-  const calcRow = (r: MediaRow) => {
-    const list = parseFloat(r.listPrice) || 0
-    const disc = parseFloat(r.discount) || 0
-    return list - disc
-  }
-  const totalTax = rows.reduce((s, r) => s + calcRow(r), 0)
+  const calcRow   = (r: MediaRow) => (parseFloat(r.listPrice) || 0) - (parseFloat(r.discount) || 0)
+  const totalTax  = rows.reduce((s, r) => s + calcRow(r), 0)
   const totalList = rows.reduce((s, r) => s + (parseFloat(r.listPrice) || 0), 0)
   const totalDisc = rows.reduce((s, r) => s + (parseFloat(r.discount) || 0), 0)
 
@@ -192,7 +233,6 @@ function MediaEstimate() {
 
   return (
     <div className="bg-white border border-slate-300 p-8 print:p-4 print:border-0">
-      {/* ヘッダー */}
       <div className="flex justify-between items-start mb-5">
         <div className="flex items-baseline gap-2">
           <input value={customer} onChange={e => setCustomer(e.target.value)}
@@ -203,7 +243,6 @@ function MediaEstimate() {
           className={`w-44 text-right text-sm ${lineCls}`} />
       </div>
 
-      {/* 件名・有効期限 */}
       <div className="space-y-2 mb-5 text-sm">
         <div className="flex items-center gap-2">
           <span className="font-semibold w-20">件  名：</span>
@@ -215,14 +254,12 @@ function MediaEstimate() {
         </div>
       </div>
 
-      {/* 御掲載料金 */}
       <div className="flex items-center gap-3 mb-5 py-2 border-y border-slate-200">
         <span className="font-semibold">御掲載料金</span>
         <span className="text-lg font-bold">{totalTax > 0 ? `¥${totalTax.toLocaleString("ja-JP")}` : "¥0"}</span>
         <span className="text-sm text-slate-500">（税別）</span>
       </div>
 
-      {/* 明細テーブル */}
       <table className="w-full border-collapse text-xs mb-2">
         <thead>
           <tr className="bg-slate-100">
@@ -248,7 +285,7 @@ function MediaEstimate() {
                 <input type="number" value={r.discount} onChange={e => upd(r.id, "discount", e.target.value)}
                   className={`${inputCls} text-right`} />
               </td>
-              <td className="border border-slate-300 px-2 py-1 text-right w-24 font-medium">
+              <td className="border border-slate-300 px-2 py-1.5 text-right w-24 font-medium">
                 {yen(calcRow(r))}
               </td>
               <td className="border border-slate-300 p-0 w-28">
@@ -279,13 +316,9 @@ function MediaEstimate() {
         <Plus className="w-3 h-3" />行を追加
       </button>
 
-      {/* 備考 */}
-      <div className="mb-5 text-sm">
-        <span className="font-semibold">備考: </span>
-        <input value={biko} onChange={e => setBiko(e.target.value)} className={`ml-2 w-full ${lineCls}`} />
-      </div>
+      {/* 備考（複数行対応） */}
+      <MemoSection rows={bikoRows} onChange={setBikoRows} />
 
-      {/* 発注欄 */}
       <div className="border border-slate-300 p-4 text-sm">
         <p className="mb-3 text-slate-700">上記見積にて、発注致します。</p>
         <div className="grid grid-cols-2 gap-4">
@@ -319,18 +352,23 @@ interface PostRow {
 
 function PostingEstimate() {
   const [customer, setCustomer] = useState("")
-  const [dateStr, setDateStr] = useState(toReiwa(new Date()))
-  const [subject, setSubject] = useState("単独ポスティング　軒並配布 金額一覧")
-  const [expiry, setExpiry] = useState("")
-  const [biko, setBiko] = useState("●納品先：\n住所：\n平日9時～17時納品可\n月～金で配布、前週（金）までに納品")
+  const [dateStr,  setDateStr]  = useState(toReiwa(new Date()))
+  const [subject,  setSubject]  = useState("単独ポスティング　軒並配布 金額一覧")
+  const [expiry,   setExpiry]   = useState("")
+  const [bikoRows, setBikoRows] = useState<MemoRow[]>([
+    { id: uid(), text: "●納品先：" },
+    { id: uid(), text: "住所：" },
+    { id: uid(), text: "平日9時～17時納品可" },
+    { id: uid(), text: "月～金で配布、前週（金）までに納品" },
+  ])
   const [company, setCompany] = useState("")
   const [contact, setContact] = useState("")
   const [rows, setRows] = useState<PostRow[]>(() => [
     { id: uid(), method: "軒並配布", area: "", size: "A4", deliveryDate: "", arrivalDate: "", qty: "", unitPrice: "4.5", deliveryTo: "" }
   ])
 
-  const calcRow = (r: PostRow) => (parseFloat(r.qty) || 0) * (parseFloat(r.unitPrice) || 0)
-  const totalQty = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0)
+  const calcRow    = (r: PostRow) => (parseFloat(r.qty) || 0) * (parseFloat(r.unitPrice) || 0)
+  const totalQty   = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0)
   const totalPrice = rows.reduce((s, r) => s + calcRow(r), 0)
 
   const upd = (id: number, f: keyof PostRow, v: string) =>
@@ -338,7 +376,6 @@ function PostingEstimate() {
 
   return (
     <div className="bg-white border border-slate-300 p-8 print:p-4 print:border-0">
-      {/* ヘッダー */}
       <div className="flex justify-between items-start mb-5">
         <div className="flex items-baseline gap-2">
           <input value={customer} onChange={e => setCustomer(e.target.value)}
@@ -349,7 +386,6 @@ function PostingEstimate() {
           className={`w-44 text-right text-sm ${lineCls}`} />
       </div>
 
-      {/* 件名・有効期限 */}
       <div className="space-y-2 mb-5 text-sm">
         <div className="flex items-center gap-2">
           <span className="font-semibold w-20">件  名：</span>
@@ -361,14 +397,12 @@ function PostingEstimate() {
         </div>
       </div>
 
-      {/* 配布料金 */}
       <div className="flex items-center gap-3 mb-5 py-2 border-y border-slate-200">
         <span className="font-semibold">配布料金</span>
         <span className="text-lg font-bold">{totalPrice > 0 ? `¥${totalPrice.toLocaleString("ja-JP")}` : "¥0"}</span>
         <span className="text-sm text-slate-500">（税別）</span>
       </div>
 
-      {/* 明細テーブル */}
       <table className="w-full border-collapse text-xs mb-2">
         <thead>
           <tr className="bg-slate-100">
@@ -395,7 +429,7 @@ function PostingEstimate() {
                 <input type="number" value={r.unitPrice} onChange={e => upd(r.id, "unitPrice", e.target.value)}
                   className={`${inputCls} text-right`} />
               </td>
-              <td className="border border-slate-300 px-1.5 py-1 text-right w-20 font-medium">
+              <td className="border border-slate-300 px-1.5 py-1.5 text-right w-20 font-medium">
                 {yen(calcRow(r))}
               </td>
               <td className="border border-slate-300 p-0">
@@ -427,14 +461,9 @@ function PostingEstimate() {
         <Plus className="w-3 h-3" />行を追加
       </button>
 
-      {/* 備考 */}
-      <div className="mb-5 text-sm">
-        <span className="font-semibold">備考：</span>
-        <textarea value={biko} onChange={e => setBiko(e.target.value)} rows={4}
-          className="w-full mt-1 p-2 border border-slate-200 rounded text-xs resize-none focus:outline-none focus:ring-1 focus:ring-blue-400 print:border-0 print:p-0" />
-      </div>
+      {/* 備考（複数行対応） */}
+      <MemoSection rows={bikoRows} onChange={setBikoRows} />
 
-      {/* 発注欄 */}
       <div className="border border-slate-300 p-4 text-sm">
         <p className="mb-3 text-slate-700">上記見積にて、発注致します。</p>
         <div className="grid grid-cols-2 gap-4">
@@ -462,20 +491,21 @@ function PostingEstimate() {
    メインページ（テンプレート切替）
 ──────────────────────────────────── */
 const TEMPLATES = [
-  { key: "general", label: "汎用御見積書", component: GeneralEstimate },
-  { key: "media",   label: "誌面広告見積書", component: MediaEstimate },
-  { key: "posting", label: "ポスティング見積書", component: PostingEstimate },
+  { key: "general", label: "汎用御見積書" },
+  { key: "media",   label: "誌面広告見積書" },
+  { key: "posting", label: "ポスティング見積書" },
 ] as const
 
 type TemplateKey = typeof TEMPLATES[number]["key"]
 
 export default function EstimatesPage() {
+  const { data: session } = useSession()
   const [tmpl, setTmpl] = useState<TemplateKey>("general")
-  const Active = TEMPLATES.find(t => t.key === tmpl)!.component
+
+  const defaultPerson = session?.user?.name || ""
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      {/* 操作バー */}
       <div className="flex items-center justify-between mb-6 print:hidden">
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <FileText className="w-6 h-6 text-blue-500" />
@@ -502,7 +532,9 @@ export default function EstimatesPage() {
         </div>
       </div>
 
-      <Active />
+      {tmpl === "general"  && <GeneralEstimate defaultPerson={defaultPerson} />}
+      {tmpl === "media"    && <MediaEstimate />}
+      {tmpl === "posting"  && <PostingEstimate />}
     </div>
   )
 }

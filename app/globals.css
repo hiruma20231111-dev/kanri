@@ -31,11 +31,39 @@ body {
   .print\:hidden { display: none !important; }
   nav, aside, header { display: none !important; }
   main { margin: 0 !important; overflow: visible !important; }
+
+  /* 印刷時のinput/textarea: 枠を消してテキストだけ表示しつつ内側の余白を確保 */
   input, textarea, select {
     border: none !important;
     background: transparent !important;
-    padding: 0 !important;
     -webkit-appearance: none;
+    padding: 1px 3px !important;
+    line-height: 1.4 !important;
   }
   input[type="checkbox"] { -webkit-appearance: checkbox; }
+
+  /* 数値inputのスピンボタンを非表示 */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] { -moz-appearance: textfield; }
+
+  /* テーブル: セル内でテキストを折り返す */
+  table { border-collapse: collapse; width: 100%; }
+  td, th {
+    word-break: break-all;
+    overflow-wrap: break-word;
+    vertical-align: middle;
+  }
+
+  /* セル内のinputが枠を超えないように */
+  td input, td textarea, td select {
+    max-width: 100%;
+  }
+
+  /* ページまたぎ防止 */
+  tr { break-inside: avoid; }
+  .print-avoid { break-inside: avoid; }
 }

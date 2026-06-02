@@ -25,51 +25,51 @@ function todayJp()          { return new Date().toLocaleDateString("ja-JP", { ye
 
 interface LeadRow { rowIndex: number; data: string[] }
 
-/* 空フォーム */
 function emptyForm(tantoDefault = "") {
   return { 日付:todayJp(),担当:tantoDefault,企業:"",電話:"",SF:"済〇",商材:"",エリア:"",業種:"",架電結果:"",商談予定:"",受注日:"",商談結果:"",金額:"",備考:"" }
 }
 
-/* 編集可能フィールド定義 */
-const EDIT_FIELDS = [
-  { key:"架電結果", label:"架電結果",   type:"select",   opts:KAKEDEN_OPTIONS, col:C.架電結果 },
-  { key:"商談予定", label:"商談予定日", type:"date",     col:C.商談予定 },
-  { key:"受注日",   label:"受注日",     type:"date",     col:C.受注日 },
-  { key:"商談結果", label:"商談結果",   type:"select",   opts:SHODAN_OPTIONS, col:C.商談結果 },
-  { key:"金額",     label:"初回受注金額", type:"number", col:C.金額 },
-  { key:"備考",     label:"備考",       type:"textarea", col:C.備考 },
-] as const
-
 type EditState = Record<string, string>
+
+/* テーブルヘッダー */
+const TABLE_HEADERS = ["架電日","担当","企業・店舗名","電話番号","SF","想定商材","エリア","業種","架電結果","商談予定日","受注日","商談結果","初回金額","備考"]
+const EDITABLE_FROM = C.エリア // 列6以降が編集可能
 
 /* ─── コンポーネント ───────────────────── */
 export default function NewLeadsPage() {
   const { data: session } = useSession()
+
   const [shinkiRows,        setShinkiRows]        = useState<LeadRow[]>([])
   const [step2ExtraHeaders, setStep2ExtraHeaders] = useState<string[]>([])
   const [step2ExtraDesc,    setStep2ExtraDesc]    = useState<string[]>([])
   const [step2Rows,         setStep2Rows]         = useState<LeadRow[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState("")
-  const [showForm,  setShowForm]  = useState(false)
-  const [saving,    setSaving]    = useState(false)
-  const [toast,     setToast]     = useState<{ msg:string; type:"ok"|"err" } | null>(null)
-  const [filterTanto, setFilterTanto] = useState("比留間")
+  const [eriaOptions,       setEriaOptions]       = useState<string[]>([])
+  const [gyoshuOptions,     setGyoshuOptions]     = useState<string[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState("")
+  const [showForm,   setShowForm]   = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [toast,      setToast]      = useState<{ msg:string; type:"ok"|"err" } | null>(null)
+  const [filterTanto,setFilterTanto]= useState("")
 
-  /* 編集パネル */
   const [editingRowIdx, setEditingRowIdx] = useState<number | null>(null)
   const [editState,     setEditState]     = useState<EditState>({})
   const [editSaving,    setEditSaving]    = useState(false)
 
-  /* ステップ2パネル */
   const [step2Open,   setStep2Open]   = useState<number | null>(null)
   const [step2Forms,  setStep2Forms]  = useState<Record<number,string[]>>({})
   const [step2Saving, setStep2Saving] = useState<number | null>(null)
 
-  const userEmail    = (session?.user as any)?.email || ""
-  const isHiruma     = userEmail.includes("hiruma")
-  const tantoDefault = isHiruma ? "比留間" : ""
-  const [form, setForm] = useState(emptyForm(tantoDefault))
+  /* ログインユーザー名をフィルターと担当デフォルトに反映 */
+  const userName = session?.user?.name || ""
+  useEffect(() => {
+    if (userName && !filterTanto) setFilterTanto(userName)
+  }, [userName])
+
+  const [form, setForm] = useState(emptyForm())
+  useEffect(() => {
+    if (userName) setForm(p => p.担当 ? p : { ...p, 担当: userName })
+  }, [userName])
 
   const showToast = (msg: string, type: "ok"|"err" = "ok") => {
     setToast({ msg, type })
@@ -86,6 +86,8 @@ export default function NewLeadsPage() {
       setStep2ExtraHeaders(d.step2ExtraHeaders || [])
       setStep2ExtraDesc(d.step2ExtraDesc || [])
       setStep2Rows(d.step2Rows || [])
+      setEriaOptions(d.eriaOptions || [])
+      setGyoshuOptions(d.gyoshuOptions || [])
     } catch (e: any) { setError(e.message) }
     finally { setLoading(false) }
   }, [])
@@ -114,7 +116,7 @@ export default function NewLeadsPage() {
       if (!res.ok) throw new Error(d.error)
       showToast("追加しました")
       setShowForm(false)
-      setForm(emptyForm(tantoDefault))
+      setForm(emptyForm(userName))
       fetchData()
     } catch (e: any) { showToast(e.message, "err") }
     finally { setSaving(false) }
@@ -124,24 +126,22 @@ export default function NewLeadsPage() {
   function openEdit(row: LeadRow) {
     const d = row.data
     const s: EditState = {}
-    EDIT_FIELDS.forEach(f => {
+    EDIT_FIELDS(eriaOptions, gyoshuOptions).forEach(f => {
       const v = d[f.col] || ""
-      // 日付フィールドはISO形式に変換
       s[f.key] = f.type === "date" ? toIso(v) : v
     })
     setEditState(s)
     setEditingRowIdx(row.rowIndex)
-    setStep2Open(null) // ステップ2パネルを閉じる
+    setStep2Open(null)
   }
 
   /* ── 行編集：保存 ── */
   async function saveEdit(row: LeadRow) {
     setEditSaving(true)
     try {
-      // 全14列のデータを作成（編集列のみ上書き）
       const newData = [...row.data]
       while (newData.length < 14) newData.push("")
-      EDIT_FIELDS.forEach(f => {
+      EDIT_FIELDS(eriaOptions, gyoshuOptions).forEach(f => {
         const v = editState[f.key] || ""
         newData[f.col] = f.type === "date" ? toJp(v) : v
       })
@@ -154,7 +154,6 @@ export default function NewLeadsPage() {
       const d = await res.json()
       if (!res.ok) throw new Error(d.error)
 
-      // ステップ2移行に変わった場合、ステップ2新規にも追記
       if (editState["架電結果"] === STEP2_TRIGGER) {
         const existingS2 = step2Rows.find(s => s.data[C.企業] === row.data[C.企業])
         if (!existingS2) {
@@ -207,8 +206,27 @@ export default function NewLeadsPage() {
     : shinkiRows
 
   /* ── スタイル ── */
-  const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-  const labelCls = "text-xs font-semibold text-slate-500 mb-1 block"
+  const inputCls  = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+  const labelCls  = "text-xs font-semibold text-slate-500 mb-1 block"
+  const selectCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+
+  /* フォームのフィールド定義（エリア・業種はAPIから取得したselect） */
+  const FORM_FIELDS = [
+    { k:"日付",    label:"架電日",        type:"date" },
+    { k:"担当",    label:"担当",          type:"text" },
+    { k:"企業",    label:"企業・店舗名 *", type:"text" },
+    { k:"電話",    label:"電話番号",      type:"tel" },
+    { k:"SF",      label:"SFチェック",    type:"select",   opts:SF_OPTIONS },
+    { k:"商材",    label:"想定商材",      type:"datalist", opts:SOGAI_OPTIONS },
+    { k:"エリア",  label:"エリア",        type: eriaOptions.length > 0 ? "select" : "text",   opts:eriaOptions },
+    { k:"業種",    label:"業種",          type: gyoshuOptions.length > 0 ? "select" : "text", opts:gyoshuOptions },
+    { k:"架電結果",label:"架電結果",      type:"select",   opts:KAKEDEN_OPTIONS },
+    { k:"商談予定",label:"商談予定日",    type:"date" },
+    { k:"受注日",  label:"受注日",        type:"date" },
+    { k:"商談結果",label:"商談結果",      type:"select",   opts:SHODAN_OPTIONS },
+    { k:"金額",    label:"初回受注金額",  type:"number" },
+    { k:"備考",    label:"備考",          type:"text" },
+  ]
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto">
@@ -220,7 +238,7 @@ export default function NewLeadsPage() {
             <ClipboardList className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">東大阪新規リスト</h1>
+            <h1 className="text-xl font-bold text-slate-900">見込みリスト</h1>
             <p className="text-xs text-slate-500">Google Sheets 双方向同期 · {shinkiRows.length}件</p>
           </div>
         </div>
@@ -235,7 +253,7 @@ export default function NewLeadsPage() {
             className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm">
             <ExternalLink className="w-4 h-4" />シートを開く
           </a>
-          <button onClick={() => { setShowForm(true); setForm(emptyForm(tantoDefault)) }}
+          <button onClick={() => { setShowForm(true); setForm(emptyForm(userName)) }}
             className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium">
             <Plus className="w-4 h-4" />新規追加
           </button>
@@ -267,26 +285,11 @@ export default function NewLeadsPage() {
             <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            {([
-              { k:"日付",   label:"架電日",      type:"date" },
-              { k:"担当",   label:"担当",         type:"text",      ro:isHiruma },
-              { k:"企業",   label:"企業・店舗名 *", type:"text" },
-              { k:"電話",   label:"電話番号",     type:"tel" },
-              { k:"SF",     label:"SFチェック",   type:"select",    opts:SF_OPTIONS },
-              { k:"商材",   label:"想定商材",     type:"datalist",  opts:SOGAI_OPTIONS },
-              { k:"エリア", label:"エリア",       type:"text" },
-              { k:"業種",   label:"業種",         type:"text" },
-              { k:"架電結果",label:"架電結果",    type:"select",    opts:KAKEDEN_OPTIONS },
-              { k:"商談予定",label:"商談予定日",  type:"date" },
-              { k:"受注日", label:"受注日",       type:"date" },
-              { k:"商談結果",label:"商談結果",    type:"select",    opts:SHODAN_OPTIONS },
-              { k:"金額",   label:"初回受注金額", type:"number" },
-              { k:"備考",   label:"備考",         type:"text" },
-            ] as const).map(({ k, label, type, opts, ro }: any) => (
+            {FORM_FIELDS.map(({ k, label, type, opts }: any) => (
               <div key={k}>
                 <label className={labelCls}>{label}</label>
                 {type === "select" ? (
-                  <select value={(form as any)[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} className={inputCls}>
+                  <select value={(form as any)[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} className={selectCls}>
                     <option value="">選択...</option>
                     {opts?.map((o: string) => <option key={o} value={o}>{o}</option>)}
                   </select>
@@ -296,9 +299,9 @@ export default function NewLeadsPage() {
                     <datalist id={`dl-${k}`}>{opts?.map((o: string) => <option key={o} value={o} />)}</datalist>
                   </>
                 ) : (
-                  <input type={type} value={(form as any)[k]} readOnly={ro}
+                  <input type={type} value={(form as any)[k]}
                     onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
-                    className={`${inputCls} ${ro ? "bg-slate-50" : ""}`} />
+                    className={inputCls} />
                 )}
               </div>
             ))}
@@ -346,9 +349,9 @@ export default function NewLeadsPage() {
             <table className="w-full text-xs min-w-max">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  {["架電日","担当","企業・店舗名","電話番号","SF","想定商材","エリア","業種","架電結果","商談予定日","受注日","商談結果","初回金額","備考"].map((h, i) => (
-                    <th key={h} className={`text-left px-3 py-2.5 font-semibold whitespace-nowrap ${i >= C.架電結果 ? "text-teal-700 bg-teal-50" : "text-slate-600"}`}>
-                      {h}{i >= C.架電結果 ? " ✎" : ""}
+                  {TABLE_HEADERS.map((h, i) => (
+                    <th key={h} className={`text-left px-3 py-2.5 font-semibold whitespace-nowrap ${i >= EDITABLE_FROM ? "text-teal-700 bg-teal-50" : "text-slate-600"}`}>
+                      {h}{i >= EDITABLE_FROM ? " ✎" : ""}
                     </th>
                   ))}
                   <th className="px-3 py-2.5 bg-slate-50" />
@@ -359,37 +362,36 @@ export default function NewLeadsPage() {
                   <tr><td colSpan={15} className="text-center py-12 text-slate-400">データがありません</td></tr>
                 )}
                 {filtered.map(row => {
-                  const d = row.data
-                  const isStep2  = d[C.架電結果] === STEP2_TRIGGER
+                  const d         = row.data
+                  const isStep2   = d[C.架電結果] === STEP2_TRIGGER
                   const isEditing = editingRowIdx === row.rowIndex
-                  const isStep2Open = step2Open === row.rowIndex
-                  const s2Row   = step2Rows.find(s => s.data[C.企業] === d[C.企業])
+                  const isS2Open  = step2Open === row.rowIndex
+                  const s2Row     = step2Rows.find(s => s.data[C.企業] === d[C.企業])
+                  const editFields = EDIT_FIELDS(eriaOptions, gyoshuOptions)
 
                   return (
                     <>
-                      {/* メイン行 */}
                       <tr key={row.rowIndex}
                         className={`border-b border-slate-100 transition-colors ${
                           isEditing ? "bg-blue-50 border-blue-200" : isStep2 ? "bg-teal-50/50" : "hover:bg-slate-50"
                         }`}
                       >
-                        {/* A-H: 非編集列 */}
-                        {(d.slice(0, C.架電結果) as string[]).map((cell, ci) => (
+                        {/* 列0-5: 読み取り専用（日付,担当,企業,電話,SF,商材） */}
+                        {(d.slice(0, EDITABLE_FROM) as string[]).map((cell, ci) => (
                           <td key={ci} className="px-3 py-2 whitespace-nowrap text-slate-700">
                             {cell || <span className="text-slate-300">-</span>}
                           </td>
                         ))}
 
-                        {/* I-N: 編集可能列 */}
+                        {/* 列6以降: 編集可能（エリア,業種,架電結果,...,備考） */}
                         {isEditing ? (
-                          /* 編集モード：インライン入力 */
-                          EDIT_FIELDS.map(f => (
+                          editFields.map(f => (
                             <td key={f.key} className="px-2 py-1.5">
                               {f.type === "select" ? (
                                 <select value={editState[f.key] || ""} onChange={e => setEditState(p => ({ ...p, [f.key]: e.target.value }))}
                                   className="border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white min-w-[90px]">
                                   <option value="">-</option>
-                                  {f.opts?.map((o: string) => <option key={o} value={o}>{o}</option>)}
+                                  {(f.opts as string[] | undefined)?.map((o: string) => <option key={o} value={o}>{o}</option>)}
                                 </select>
                               ) : f.type === "date" ? (
                                 <input type="date" value={editState[f.key] || ""}
@@ -400,19 +402,18 @@ export default function NewLeadsPage() {
                                   onChange={e => setEditState(p => ({ ...p, [f.key]: e.target.value }))}
                                   className="border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none w-24 bg-white" />
                               ) : (
-                                <input type="text" value={editState[f.key] || ""} placeholder="備考..."
+                                <input type="text" value={editState[f.key] || ""}
                                   onChange={e => setEditState(p => ({ ...p, [f.key]: e.target.value }))}
-                                  className="border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none w-32 bg-white" />
+                                  className="border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none w-28 bg-white" />
                               )}
                             </td>
                           ))
                         ) : (
-                          /* 表示モード */
-                          (d.slice(C.架電結果, 14) as string[]).map((cell, ci) => (
-                            <td key={ci + C.架電結果} className="px-3 py-2 whitespace-nowrap">
-                              {ci === 0 && cell === STEP2_TRIGGER ? (
+                          (d.slice(EDITABLE_FROM, 14) as string[]).map((cell, ci) => (
+                            <td key={ci + EDITABLE_FROM} className="px-3 py-2 whitespace-nowrap">
+                              {ci === (C.架電結果 - EDITABLE_FROM) && cell === STEP2_TRIGGER ? (
                                 <span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full font-medium">{cell}</span>
-                              ) : ci === 0 && cell ? (
+                              ) : ci === (C.架電結果 - EDITABLE_FROM) && cell ? (
                                 <span className={`px-2 py-0.5 rounded-full font-medium ${
                                   cell === "受注" ? "bg-green-100 text-green-700" :
                                   cell === "NG"   ? "bg-red-100 text-red-700" :
@@ -442,13 +443,13 @@ export default function NewLeadsPage() {
                               <>
                                 <button onClick={() => openEdit(row)}
                                   className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                  title="架電結果以降を編集">
+                                  title="エリア・業種・架電結果以降を編集">
                                   <Pencil className="w-3.5 h-3.5" />
                                 </button>
                                 {isStep2 && step2ExtraHeaders.length > 0 && (
                                   <button
                                     onClick={() => {
-                                      const next = isStep2Open ? null : row.rowIndex
+                                      const next = isS2Open ? null : row.rowIndex
                                       setStep2Open(next)
                                       if (next !== null) {
                                         setStep2Forms(p => ({ ...p, [row.rowIndex]: s2Row ? s2Row.data.slice(13) : Array(step2ExtraHeaders.length).fill("") }))
@@ -457,7 +458,7 @@ export default function NewLeadsPage() {
                                     }}
                                     className="flex items-center gap-0.5 text-teal-600 hover:text-teal-800 text-xs font-medium whitespace-nowrap px-1"
                                   >
-                                    {isStep2Open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                    {isS2Open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                                     S2
                                   </button>
                                 )}
@@ -468,7 +469,7 @@ export default function NewLeadsPage() {
                       </tr>
 
                       {/* ステップ2展開パネル */}
-                      {isStep2Open && step2ExtraHeaders.length > 0 && (
+                      {isS2Open && step2ExtraHeaders.length > 0 && (
                         <tr key={`s2-${row.rowIndex}`} className="bg-teal-50/70 border-b border-teal-100">
                           <td colSpan={15} className="px-4 py-4">
                             <div className="bg-white border border-teal-200 rounded-xl p-4">
@@ -509,10 +510,24 @@ export default function NewLeadsPage() {
           </div>
           <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-400 flex items-center justify-between">
             <span>表示: {filtered.length}件 / 合計: {shinkiRows.length}件</span>
-            <span className="text-teal-600">✎ 列ヘッダーに ✎ マークがある列は行の鉛筆アイコンから編集できます</span>
+            <span className="text-teal-600">✎ エリア・業種・架電結果以降は鉛筆アイコンから編集できます</span>
           </div>
         </div>
       )}
     </div>
   )
+}
+
+/* ── 編集フィールド定義（APIから取得した選択肢を受け取る） ── */
+function EDIT_FIELDS(eriaOptions: string[], gyoshuOptions: string[]) {
+  return [
+    { key:"エリア",  label:"エリア",       type: eriaOptions.length > 0 ? "select" : "text" as const,   opts: eriaOptions,    col: C.エリア },
+    { key:"業種",    label:"業種",         type: gyoshuOptions.length > 0 ? "select" : "text" as const, opts: gyoshuOptions,  col: C.業種 },
+    { key:"架電結果",label:"架電結果",     type:"select" as const, opts: KAKEDEN_OPTIONS,                col: C.架電結果 },
+    { key:"商談予定",label:"商談予定日",   type:"date" as const,                                         col: C.商談予定 },
+    { key:"受注日",  label:"受注日",       type:"date" as const,                                         col: C.受注日 },
+    { key:"商談結果",label:"商談結果",     type:"select" as const, opts: SHODAN_OPTIONS,                 col: C.商談結果 },
+    { key:"金額",    label:"初回受注金額", type:"number" as const,                                       col: C.金額 },
+    { key:"備考",    label:"備考",         type:"text" as const,                                         col: C.備考 },
+  ]
 }

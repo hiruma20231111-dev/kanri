@@ -6,7 +6,6 @@ import { signOut, useSession } from "next-auth/react"
 import {
   LayoutDashboard,
   Mail,
-  Users,
   FileText,
   ClipboardList,
   Bot,
@@ -21,10 +20,9 @@ const navItems = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/assistant", label: "AIアシスタント", icon: Bot },
   { href: "/clients", label: "顧客稼働状況", icon: BarChart2 },
-  { href: "/newleads", label: "東大阪新規リスト", icon: PhoneCall },
+  { href: "/newleads", label: "見込みリスト", icon: PhoneCall },
   { href: "/mentions", label: "kp-chatメンション", icon: MessageSquare },
   { href: "/gmail", label: "Gmail", icon: Mail },
-  { href: "/customers", label: "顧客管理", icon: Users },
   { href: "/estimates", label: "見積書", icon: FileText },
   { href: "/applications", label: "申込書", icon: ClipboardList },
 ]

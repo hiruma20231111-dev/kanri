@@ -3,14 +3,9 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { google } from "googleapis"
 
-const SHEET_ID = process.env.SHINKI_SHEETS_ID || ""
+const SHEET_ID    = process.env.SHINKI_SHEETS_ID || ""
 const SHEET_SHINKI = "新規リスト"
 const SHEET_STEP2  = "ステップ2新規"
-
-// 架電結果の選択肢
-export const KAKEDEN_OPTIONS = ["不在", "担当者不在", "折り返し", "NG", "ステップ2へ移行", "受注", "その他"]
-export const SOGAI_OPTIONS   = ["まみたん", "求人", "DOMOぱど", "ワガシャ", "WEB広告", "ロカオプ", "HP/LP", "ポスティング", "その他"]
-export const SF_OPTIONS      = ["済〇", "未", "不要"]
 
 function makeAuth(accessToken: string) {
   const auth = new google.auth.OAuth2()
@@ -18,7 +13,58 @@ function makeAuth(accessToken: string) {
   return google.sheets({ version: "v4", auth })
 }
 
-// GET: 新規リスト + ステップ2新規 のヘッダーとデータ
+/**
+ * 指定セルのデータ検証（ドロップダウン）選択肢を取得。
+ * ONE_OF_LIST → 直接取得
+ * ONE_OF_RANGE → 参照先レンジをfetchして取得
+ * 取得できない場合は空配列を返す（フロントでフォールバック）
+ */
+async function getValidationOptions(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+  sheetName: string,
+  colLetter: string
+): Promise<string[]> {
+  try {
+    const res = await (sheets as any).spreadsheets.get({
+      spreadsheetId,
+      includeGridData: true,
+      ranges: [`${sheetName}!${colLetter}2`],
+    })
+    const cell =
+      res.data.sheets?.[0]?.data?.[0]?.rowData?.[0]?.values?.[0]
+    const validation = cell?.dataValidation
+    if (!validation) return []
+
+    const condType = validation.condition?.type
+    if (condType === "ONE_OF_LIST") {
+      return (
+        validation.condition.values
+          ?.map((v: any) => v.userEnteredValue as string)
+          .filter(Boolean) || []
+      )
+    }
+    if (condType === "ONE_OF_RANGE") {
+      const rangeRef = (
+        validation.condition.values?.[0]?.userEnteredValue as string
+      )?.replace(/^=/, "")
+      if (rangeRef) {
+        const rangeRes = await (sheets as any).spreadsheets.values.get({
+          spreadsheetId,
+          range: rangeRef,
+        })
+        return ((rangeRes.data.values as string[][]) || [])
+          .flat()
+          .filter(Boolean)
+      }
+    }
+    return []
+  } catch {
+    return []
+  }
+}
+
+// GET: 新規リスト + ステップ2新規 のヘッダー・データ + エリア・業種の選択肢
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -29,29 +75,34 @@ export async function GET(req: NextRequest) {
   try {
     const sheets = makeAuth(accessToken)
 
-    const [shinkiRes, step2HdrRes, step2DataRes] = await Promise.all([
-      sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_SHINKI}!A1:N` }),
-      sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_STEP2}!A1:AZ2` }),
-      sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_STEP2}!A2:AZ` }),
-    ])
+    const [shinkiRes, step2HdrRes, step2DataRes, eriaOpts, gyoshuOpts] =
+      await Promise.all([
+        sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_SHINKI}!A1:N` }),
+        sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_STEP2}!A1:AZ2` }),
+        sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${SHEET_STEP2}!A2:AZ` }),
+        getValidationOptions(sheets, SHEET_ID, SHEET_SHINKI, "G"), // エリア
+        getValidationOptions(sheets, SHEET_ID, SHEET_SHINKI, "H"), // 業種
+      ])
 
-    const shinkiValues   = shinkiRes.data.values   || []
-    const step2HdrValues = step2HdrRes.data.values  || []
-    const step2DataValues= step2DataRes.data.values || []
+    const shinkiValues    = shinkiRes.data.values   || []
+    const step2HdrValues  = step2HdrRes.data.values  || []
+    const step2DataValues = step2DataRes.data.values || []
 
-    const shinkiHeaders = shinkiValues[0] || []
-    const shinkiRows    = shinkiValues.slice(1).map((row, i) => ({ rowIndex: i + 2, data: row }))
+    const shinkiHeaders     = shinkiValues[0] || []
+    const shinkiRows        = shinkiValues.slice(1).map((row, i) => ({ rowIndex: i + 2, data: row }))
 
     // ステップ2: row0=タイトル row1=入力例、L列以降が追加項目
-    const step2AllHeaders  = step2HdrValues[0] || []
-    const step2AllDesc     = step2HdrValues[1] || []
-    const step2ExtraHeaders= step2AllHeaders.slice(13) // L(index=11)以降
-    const step2ExtraDesc   = step2AllDesc.slice(13)
-    const step2Rows        = step2DataValues.map((row, i) => ({ rowIndex: i + 2, data: row }))
+    const step2AllHeaders   = step2HdrValues[0] || []
+    const step2AllDesc      = step2HdrValues[1] || []
+    const step2ExtraHeaders = step2AllHeaders.slice(13)
+    const step2ExtraDesc    = step2AllDesc.slice(13)
+    const step2Rows         = step2DataValues.map((row, i) => ({ rowIndex: i + 2, data: row }))
 
     return NextResponse.json({
       shinkiHeaders, shinkiRows,
       step2AllHeaders, step2ExtraHeaders, step2ExtraDesc, step2Rows,
+      eriaOptions: eriaOpts,
+      gyoshuOptions: gyoshuOpts,
     })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })

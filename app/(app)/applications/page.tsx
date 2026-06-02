@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ClipboardList, Plus, Trash2, Printer } from "lucide-react"
+import { useSession } from "next-auth/react"
+import { ClipboardList, Plus, Trash2, Printer, X } from "lucide-react"
 
 const OFFICES = {
   higashiosaka: {
@@ -30,30 +31,43 @@ interface LineItem {
   unitPrice: string
 }
 
+interface BikoRow { id: number; text: string }
+
 let _id = 1
 function newItem(): LineItem {
   return { id: _id++, category: "", name: "", period: "", quantity: "", unit: "式", unitPrice: "" }
+}
+function newBikoRow(): BikoRow {
+  return { id: _id++, text: "" }
 }
 
 const INITIAL_ROWS = 8
 
 export default function ApplicationsPage() {
-  const [office, setOffice] = useState<OfficeKey>("higashiosaka")
+  const { data: session } = useSession()
+
+  const [office,       setOffice]       = useState<OfficeKey>("higashiosaka")
   const [customerName, setCustomerName] = useState("")
-  const [projectName, setProjectName] = useState("")
-  const [expiryDate, setExpiryDate] = useState("")
-  const [salesPerson, setSalesPerson] = useState("比留間　信")
-  const [agreed, setAgreed] = useState(false)
-  const [orderDate, setOrderDate] = useState("")
+  const [projectName,  setProjectName]  = useState("")
+  const [expiryDate,   setExpiryDate]   = useState("")
+  const [salesPerson,  setSalesPerson]  = useState("")
+  const [agreed,       setAgreed]       = useState(false)
+  const [orderDate,    setOrderDate]    = useState("")
   const [orderCompany, setOrderCompany] = useState("")
   const [orderAddress, setOrderAddress] = useState("")
-  const [orderPerson, setOrderPerson] = useState("")
-  const [orderTel, setOrderTel] = useState("")
+  const [orderPerson,  setOrderPerson]  = useState("")
+  const [orderTel,     setOrderTel]     = useState("")
+  const [bikoRows,     setBikoRows]     = useState<BikoRow[]>([newBikoRow()])
   const [items, setItems] = useState<LineItem[]>(() =>
     Array.from({ length: INITIAL_ROWS }, newItem)
   )
 
-  // 顧客管理ページからのURLパラメータで自動入力
+  /* セッションから担当者名を反映 */
+  useEffect(() => {
+    if (session?.user?.name && !salesPerson) setSalesPerson(session.user.name)
+  }, [session?.user?.name])
+
+  /* 顧客管理ページからのURLパラメータで自動入力 */
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     if (p.get("company"))  setCustomerName(p.get("company")!)
@@ -74,17 +88,20 @@ export default function ApplicationsPage() {
   }
 
   function calcAmount(item: LineItem): number {
-    const q = parseFloat(item.quantity) || 0
-    const p = parseFloat(item.unitPrice) || 0
-    return q * p
+    return (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)
   }
 
   const subtotal = items.reduce((sum, item) => sum + calcAmount(item), 0)
-  const tax = Math.floor(subtotal * 0.1)
-  const total = subtotal + tax
+  const tax      = Math.floor(subtotal * 0.1)
+  const total    = subtotal + tax
 
   const fmtYen = (n: number) =>
     n === 0 ? "" : `¥${n.toLocaleString("ja-JP")}`
+
+  /* 備考行操作 */
+  function addBiko()  { setBikoRows(p => [...p, newBikoRow()]) }
+  function delBiko(id: number) { if (bikoRows.length > 1) setBikoRows(p => p.filter(r => r.id !== id)) }
+  function updBiko(id: number, text: string) { setBikoRows(p => p.map(r => r.id === id ? { ...r, text } : r)) }
 
   const inputCls =
     "w-full px-2 py-1 focus:outline-none focus:bg-blue-50 print:focus:bg-transparent"
@@ -170,7 +187,8 @@ export default function ApplicationsPage() {
               type="text"
               value={salesPerson}
               onChange={e => setSalesPerson(e.target.value)}
-              className={`w-32 text-right ${fieldCls}`}
+              className={`w-40 text-right ${fieldCls}`}
+              placeholder="担当者名"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -185,7 +203,7 @@ export default function ApplicationsPage() {
           </div>
         </div>
 
-        {/* 西区フォーマット：合計金額を上部に表示 */}
+        {/* HP/LPフォーマット：合計金額を上部に表示 */}
         {office === "hplp" && (
           <div className="mb-4 text-sm flex items-center gap-3">
             <span className="font-semibold">合計金額(税込）</span>
@@ -196,7 +214,7 @@ export default function ApplicationsPage() {
         )}
 
         {/* 明細テーブル */}
-        <div className="mb-6">
+        <div className="mb-5">
           <p className="font-bold text-sm mb-2">■明細・金額</p>
           <table className="w-full border-collapse text-xs">
             <thead>
@@ -243,7 +261,7 @@ export default function ApplicationsPage() {
                         onChange={e => updateItem(item.id, "unitPrice", e.target.value)}
                         className={`${inputCls} text-right`} />
                     </td>
-                    <td className="border border-slate-300 px-2 py-1 text-right w-24 font-medium">
+                    <td className="border border-slate-300 px-2 py-1.5 text-right w-24 font-medium">
                       {fmtYen(amount)}
                     </td>
                     <td className="border border-slate-300 px-1 py-1 text-center print:hidden">
@@ -285,6 +303,38 @@ export default function ApplicationsPage() {
           >
             <Plus className="w-3 h-3" />
             行を追加
+          </button>
+        </div>
+
+        {/* 備考欄（複数行対応） */}
+        <div className="mb-5 text-sm">
+          <p className="font-bold mb-1.5">■備考</p>
+          <div className="space-y-0.5">
+            {bikoRows.map((r, i) => (
+              <div key={r.id} className="flex items-center gap-1">
+                <span className="text-slate-400 text-xs w-4 text-right print:hidden">{i + 1}</span>
+                <input
+                  type="text"
+                  value={r.text}
+                  onChange={e => updBiko(r.id, e.target.value)}
+                  placeholder="備考を入力"
+                  className={`flex-1 ${fieldCls}`}
+                />
+                <button
+                  onClick={() => delBiko(r.id)}
+                  disabled={bikoRows.length <= 1}
+                  className="print:hidden text-slate-300 hover:text-red-400 disabled:opacity-20 ml-1"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={addBiko}
+            className="print:hidden mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+          >
+            <Plus className="w-3 h-3" />行を追加
           </button>
         </div>
 
