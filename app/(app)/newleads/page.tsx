@@ -217,7 +217,10 @@ export default function NewLeadsPage() {
   }
 
   const filtered = filterTanto
-    ? shinkiRows.filter(r => (r.data[C.担当] || "").includes(filterTanto))
+    ? shinkiRows.filter(r => {
+        const tanto = r.data[C.担当] || ""
+        return tanto.includes(filterTanto) || filterTanto.includes(tanto)
+      })
     : shinkiRows
 
   const inputCls  = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
