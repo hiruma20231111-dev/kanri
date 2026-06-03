@@ -35,6 +35,7 @@ interface EditFieldDef {
 
 function buildEditFields(eriaOptions: string[], gyoshuOptions: string[]): EditFieldDef[] {
   return [
+    { key:"架電日",  label:"架電日",       type: "date",                                        col: C.日付 },
     { key:"エリア",  label:"エリア",       type: eriaOptions.length > 0 ? "select" : "text",   opts: eriaOptions,    col: C.エリア },
     { key:"業種",    label:"業種",         type: gyoshuOptions.length > 0 ? "select" : "text", opts: gyoshuOptions,  col: C.業種 },
     { key:"架電結果",label:"架電結果",     type: "select",  opts: KAKEDEN_OPTIONS,              col: C.架電結果 },
@@ -388,7 +389,13 @@ export default function NewLeadsPage() {
                       >
                         {(d.slice(0, EDITABLE_FROM) as string[]).map((cell, ci) => (
                           <td key={ci} className="px-3 py-2 whitespace-nowrap text-slate-700">
-                            {cell || <span className="text-slate-300">-</span>}
+                            {isEditing && ci === C.日付 ? (
+                              <input type="date" value={editState["架電日"] || ""}
+                                onChange={e => setEditState(p => ({ ...p, "架電日": e.target.value }))}
+                                className="border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white w-32" />
+                            ) : (
+                              cell || <span className="text-slate-300">-</span>
+                            )}
                           </td>
                         ))}
 
