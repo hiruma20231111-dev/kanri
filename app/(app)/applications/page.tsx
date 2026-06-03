@@ -411,6 +411,30 @@ export default function ApplicationsPage() {
           </div>
         </div>
       </div>
+
+      {/* 外部リンクバナー */}
+      <div className="mt-6 print:hidden">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">関連ツール</p>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: "営業管理",                        href: "https://eigyo.kansaipado.jp/dashboard",                                                                                                                                    color: "bg-blue-600  hover:bg-blue-700" },
+            { label: "営業部長君",                      href: "https://eigyobucho.kansaipado.jp/login",                                                                                                                                   color: "bg-indigo-600 hover:bg-indigo-700" },
+            { label: "請求書・領収証 発行・書換 依頼", href: "https://script.google.com/a/macros/kansaipado.co.jp/s/AKfycbxtogEdthTWzTltBnZq5iENqfdBOtdY9DGD_xk8DtB9W4YpN8iuU7Mhf9NpvYGS1f-wOQ/exec", color: "bg-emerald-600 hover:bg-emerald-700" },
+            { label: "社内チャット",                    href: "https://d2qopozfrwtgu9.cloudfront.net/chat/",                                                                                                                              color: "bg-violet-600 hover:bg-violet-700" },
+          ].map(({ label, href, color }) => (
+            <a
+              key={href}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-white text-sm font-semibold transition-colors ${color}`}
+            >
+              <span>🔗</span>
+              {label}
+            </a>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

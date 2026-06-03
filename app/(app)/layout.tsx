@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import { Sidebar } from "@/components/Sidebar"
+import { SidebarLayout } from "@/components/SidebarLayout"
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   try {
@@ -13,11 +13,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen overflow-hidden print:block print:h-auto print:overflow-visible">
-      <Sidebar />
-      <main className="flex-1 ml-64 overflow-y-auto bg-slate-50 print:ml-0 print:overflow-visible print:bg-white">
-        {children}
-      </main>
-    </div>
+    <SidebarLayout>
+      {children}
+    </SidebarLayout>
   )
 }
