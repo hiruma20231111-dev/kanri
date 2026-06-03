@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react"
 import { ClipboardList, Plus, Trash2, Printer } from "lucide-react"
 
 /* ─── フォーム種別 ──────────────────────────────────────── */
-type FT = "hplp" | "monthly" | "server"
+type FT = "hplp" | "monthly" | "server" | "general"
 
 const CFG = {
   hplp:    { label: "HP・LP制作費",                showPreTotal: true,  rows: 10,
@@ -14,6 +14,8 @@ const CFG = {
              pay1: "末日締め翌月末日支払い",         pay2: "前払い",         p1: true,  p2: false },
   server:  { label: "サーバーレンタル・ドメイン費", showPreTotal: false, rows: 10,
              pay1: "末日締め翌月10日支払い",         pay2: "前払い",         p1: true,  p2: false },
+  general: { label: "汎用申込書",                   showPreTotal: false, rows: 8,
+             pay1: "末日締め翌月末支払い",            pay2: "",               p1: true,  p2: false },
 } as const
 
 /* ─── 明細行 ─────────────────────────────────────────────── */
@@ -278,16 +280,21 @@ export default function ApplicationsPage() {
                 <input type="checkbox" checked={pay1} onChange={e => setPay1(e.target.checked)} className="w-3.5 h-3.5" />
                 {cfg.pay1}
               </label>
-              <label className="flex items-center gap-1 cursor-pointer print:hidden flex-wrap">
-                <input type="checkbox" checked={pay2} onChange={e => setPay2(e.target.checked)} className="w-3.5 h-3.5" />
-                {cfg.pay2}（入金期限：
-                <input type="text" value={payDate} onChange={e => setPayDate(e.target.value)}
-                  placeholder="20XX年X月X日" className="border-b border-slate-300 focus:outline-none focus:border-blue-400 bg-transparent w-28" />
-                ）
-              </label>
+              {cfg.pay2 && (
+                <label className="flex items-center gap-1 cursor-pointer print:hidden flex-wrap">
+                  <input type="checkbox" checked={pay2} onChange={e => setPay2(e.target.checked)} className="w-3.5 h-3.5" />
+                  {cfg.pay2}（入金期限：
+                  <input type="text" value={payDate} onChange={e => setPayDate(e.target.value)}
+                    placeholder="20XX年X月X日" className="border-b border-slate-300 focus:outline-none focus:border-blue-400 bg-transparent w-28" />
+                  ）
+                </label>
+              )}
 
               {/* 印刷用テキスト */}
-              <span className="hidden print:inline">{pay1 ? "☑" : "□"}&nbsp;{cfg.pay1}　{pay2 ? "☑" : "□"}&nbsp;{cfg.pay2}（入金期限：{payDate || "　　　　　"}）</span>
+              <span className="hidden print:inline">
+                {pay1 ? "☑" : "□"}&nbsp;{cfg.pay1}
+                {cfg.pay2 && <>　{pay2 ? "☑" : "□"}&nbsp;{cfg.pay2}（入金期限：{payDate || "　　　　　"}）</>}
+              </span>
             </div>
           </div>
 
