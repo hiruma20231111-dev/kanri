@@ -2,416 +2,347 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
-import { ClipboardList, Plus, Trash2, Printer, X } from "lucide-react"
+import { ClipboardList, Plus, Trash2, Printer } from "lucide-react"
 
-const OFFICES = {
-  higashiosaka: {
-    label: "東大阪オフィス",
-    address: "東大阪市下小阪2-14-16　天正八戸ノ里ビル3F",
-    tel: "TEL.06-6729-8101　FAX.06-6729-8102",
-    payment: "末日締め翌月末支払い",
-  },
-  hplp: {
-    label: "HP/LP",
-    address: "東大阪市下小阪2-14-16　天正八戸ノ里ビル3F",
-    tel: "TEL.06-6729-8101　FAX.06-6729-8102",
-    payment: "着手時50%・中間30%・完成納品時20%",
-  },
+/* ─── フォーム種別 ──────────────────────────────────────── */
+type FT = "hplp" | "monthly" | "server"
+
+const CFG = {
+  hplp:    { label: "HP・LP制作費",                showPreTotal: true,  rows: 10,
+             pay1: "20日締め翌月末支払い",          pay2: "着手金",         p1: true,  p2: true  },
+  monthly: { label: "月額保守費",                  showPreTotal: false, rows: 11,
+             pay1: "末日締め翌月末日支払い",         pay2: "前払い",         p1: true,  p2: false },
+  server:  { label: "サーバーレンタル・ドメイン費", showPreTotal: false, rows: 10,
+             pay1: "末日締め翌月10日支払い",         pay2: "前払い",         p1: true,  p2: false },
 } as const
 
-type OfficeKey = keyof typeof OFFICES
-
-interface LineItem {
-  id: number
-  category: string
-  name: string
-  period: string
-  quantity: string
-  unit: string
-  unitPrice: string
-}
-
-interface BikoRow { id: number; text: string }
-
+/* ─── 明細行 ─────────────────────────────────────────────── */
+interface Row { id: number; cat: string; name: string; period: string; qty: string; unit: string; price: string }
 let _id = 1
-function newItem(): LineItem {
-  return { id: _id++, category: "", name: "", period: "", quantity: "", unit: "式", unitPrice: "" }
-}
-function newBikoRow(): BikoRow {
-  return { id: _id++, text: "" }
+const newRow = (): Row => ({ id: _id++, cat: "", name: "", period: "", qty: "", unit: "式", price: "" })
+const makeRows = (n: number) => Array.from({ length: n }, newRow)
+
+/* ─── 印刷対応フィールド ─────────────────────────────────── */
+/* 画面: input / 印刷: div で全文を表示（truncate しない） */
+function F({ v, set, ph = "", cls = "" }: { v: string; set: (s: string) => void; ph?: string; cls?: string }) {
+  return (
+    <div className={cls}>
+      <input type="text" value={v} onChange={e => set(e.target.value)} placeholder={ph}
+        className="w-full bg-transparent focus:outline-none focus:bg-blue-50 print:hidden" />
+      <div className="hidden print:block break-words whitespace-pre-wrap leading-tight min-h-[1em]">
+        {v || " "}
+      </div>
+    </div>
+  )
 }
 
-const INITIAL_ROWS = 8
+/* テーブルセル用 */
+function CF({ v, set, num = false, center = false }: { v: string; set: (s: string) => void; num?: boolean; center?: boolean }) {
+  const align = center ? "text-center" : num ? "text-right" : ""
+  return (
+    <>
+      <input type={num ? "number" : "text"} value={v} onChange={e => set(e.target.value)}
+        className={`w-full bg-transparent focus:outline-none focus:bg-blue-50 px-0.5 print:hidden ${align}`} />
+      <div className={`hidden print:block break-words whitespace-pre-wrap min-h-[0.9em] px-0.5 ${align}`}>
+        {v || " "}
+      </div>
+    </>
+  )
+}
 
+/* ─── メインコンポーネント ────────────────────────────────── */
 export default function ApplicationsPage() {
   const { data: session } = useSession()
+  const [ft,      setFt]      = useState<FT>("hplp")
+  const [cust,    setCust]    = useState("")
+  const [proj,    setProj]    = useState("")
+  const [tanto,   setTanto]   = useState("")
+  const [agreed,  setAgreed]  = useState(false)
+  const [oDate,   setODate]   = useState("")
+  const [oCo,     setOCo]     = useState("")
+  const [oAddr,   setOAddr]   = useState("")
+  const [oPer,    setOPer]    = useState("")
+  const [oTel,    setOTel]    = useState("")
+  const [pay1,    setPay1]    = useState(true)
+  const [pay2,    setPay2]    = useState(false)
+  const [payDate, setPayDate] = useState("")
+  const [rows,    setRows]    = useState<Row[]>(() => makeRows(CFG.hplp.rows))
 
-  const [office,       setOffice]       = useState<OfficeKey>("higashiosaka")
-  const [customerName, setCustomerName] = useState("")
-  const [projectName,  setProjectName]  = useState("")
-  const [expiryDate,   setExpiryDate]   = useState("")
-  const [salesPerson,  setSalesPerson]  = useState("")
-  const [agreed,       setAgreed]       = useState(false)
-  const [orderDate,    setOrderDate]    = useState("")
-  const [orderCompany, setOrderCompany] = useState("")
-  const [orderAddress, setOrderAddress] = useState("")
-  const [orderPerson,  setOrderPerson]  = useState("")
-  const [orderTel,     setOrderTel]     = useState("")
-  const [bikoRows,     setBikoRows]     = useState<BikoRow[]>([newBikoRow()])
-  const [items, setItems] = useState<LineItem[]>(() =>
-    Array.from({ length: INITIAL_ROWS }, newItem)
-  )
+  const cfg = CFG[ft]
 
-  /* セッションから担当者名を反映 */
+  /* フォーム切替時に支払条件・明細をリセット */
   useEffect(() => {
-    if (session?.user?.name && !salesPerson) setSalesPerson(session.user.name)
+    setPay1(cfg.p1); setPay2(cfg.p2); setPayDate("")
+    setRows(makeRows(cfg.rows))
+  }, [ft])
+
+  useEffect(() => {
+    if (session?.user?.name && !tanto) setTanto(session.user.name)
   }, [session?.user?.name])
 
-  /* 顧客管理ページからのURLパラメータで自動入力 */
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
-    if (p.get("company"))  setCustomerName(p.get("company")!)
-    if (p.get("contact"))  setOrderPerson(p.get("contact")!)
-    if (p.get("tel"))      setOrderTel(p.get("tel")!)
-    if (p.get("address"))  setOrderAddress(p.get("address")!)
-    if (p.get("company"))  setOrderCompany(p.get("company")!)
+    if (p.get("company"))  { setCust(p.get("company")!); setOCo(p.get("company")!) }
+    if (p.get("contact"))  setOPer(p.get("contact")!)
+    if (p.get("tel"))      setOTel(p.get("tel")!)
+    if (p.get("address"))  setOAddr(p.get("address")!)
   }, [])
 
-  const officeData = OFFICES[office]
+  const upd = (id: number, k: keyof Row, val: string) =>
+    setRows(p => p.map(r => r.id === id ? { ...r, [k]: val } : r))
+  const calc  = (r: Row) => (parseFloat(r.qty) || 0) * (parseFloat(r.price) || 0)
+  const sub   = rows.reduce((s, r) => s + calc(r), 0)
+  const tax   = Math.floor(sub * 0.1)
+  const total = sub + tax
+  const fmt   = (n: number) => n.toLocaleString("ja-JP")
 
   const today = new Date().toLocaleDateString("ja-JP", {
     year: "numeric", month: "long", day: "numeric", weekday: "long",
   })
 
-  function updateItem(id: number, field: keyof LineItem, value: string) {
-    setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item))
-  }
-
-  function calcAmount(item: LineItem): number {
-    return (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)
-  }
-
-  const subtotal = items.reduce((sum, item) => sum + calcAmount(item), 0)
-  const tax      = Math.floor(subtotal * 0.1)
-  const total    = subtotal + tax
-
-  const fmtYen = (n: number) =>
-    n === 0 ? "" : `¥${n.toLocaleString("ja-JP")}`
-
-  /* 備考行操作 */
-  function addBiko()  { setBikoRows(p => [...p, newBikoRow()]) }
-  function delBiko(id: number) { if (bikoRows.length > 1) setBikoRows(p => p.filter(r => r.id !== id)) }
-  function updBiko(id: number, text: string) { setBikoRows(p => p.map(r => r.id === id ? { ...r, text } : r)) }
-
-  const inputCls =
-    "w-full px-2 py-1 focus:outline-none focus:bg-blue-50 print:focus:bg-transparent"
-  const fieldCls =
-    "border-b border-slate-300 focus:border-blue-500 focus:outline-none print:border-slate-400"
+  /* セル共通クラス */
+  const td  = "border border-slate-400 text-xs"
+  const thc = `${td} bg-slate-100 text-center py-0.5 px-1 font-semibold`
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* 操作バー（印刷時非表示） */}
-      <div className="flex items-center justify-between mb-6 print:hidden">
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <ClipboardList className="w-6 h-6 text-blue-500" />
-          申込書作成
-        </h1>
-        <div className="flex items-center gap-3">
-          <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
-            {(Object.entries(OFFICES) as [OfficeKey, typeof OFFICES[OfficeKey]][]).map(([key, val]) => (
-              <button
-                key={key}
-                onClick={() => setOffice(key)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  office === key
-                    ? "bg-white shadow text-blue-600"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {val.label}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
-          >
-            <Printer className="w-4 h-4" />
-            PDF出力・印刷
-          </button>
-        </div>
-      </div>
+    <>
+      {/* ── 印刷CSS ──────────────────────────────────── */}
+      <style>{`
+        @media print {
+          @page { size: A4 portrait; margin: 8mm 10mm; }
+          body * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .pf { font-size: 8.5pt !important; }
+          .pf td, .pf th { padding: 1px 2px !important; font-size: 8pt !important; line-height: 1.3 !important; }
+          .pf .hdr { padding: 3px 5px !important; }
+          .pf .conf { font-size: 7.5pt !important; line-height: 1.25 !important; padding: 2px 3px !important; }
+        }
+      `}</style>
 
-      {/* 申込書本体 */}
-      <div className="bg-white border border-slate-300 p-8 print:p-4 print:border-0 print:shadow-none">
+      <div className="p-4 max-w-5xl mx-auto">
 
-        {/* タイトルヘッダー */}
-        <div className="flex justify-between items-start mb-5">
-          <div>
-            <p className="text-xs text-slate-500 mb-2">作成日　{today}</p>
-            <h2 className="text-2xl font-bold mb-4 pb-1 border-b-2 border-slate-900 inline-block pr-16">
-              商品申込書
-            </h2>
-            <div className="flex items-baseline gap-2 mt-1">
-              <input
-                type="text"
-                value={customerName}
-                onChange={e => setCustomerName(e.target.value)}
-                placeholder="顧客会社名を入力"
-                className={`text-base font-semibold w-72 ${fieldCls}`}
-              />
-              <span className="text-base font-medium">御中</span>
-            </div>
-          </div>
-          <div className="text-right text-sm leading-6">
-            <p className="font-bold text-base">株式会社関西ぱど</p>
-            <p className="text-slate-600 text-xs">{officeData.address}</p>
-            <p className="text-slate-600 text-xs">{officeData.tel}</p>
-          </div>
-        </div>
-
-        {/* 案件情報 */}
-        <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-5 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold whitespace-nowrap">案件名：</span>
-            <input
-              type="text"
-              value={projectName}
-              onChange={e => setProjectName(e.target.value)}
-              className={`flex-1 ${fieldCls}`}
-            />
-          </div>
-          <div className="flex items-center gap-2 justify-end">
-            <span className="font-semibold whitespace-nowrap">担当／</span>
-            <input
-              type="text"
-              value={salesPerson}
-              onChange={e => setSalesPerson(e.target.value)}
-              className={`w-40 text-right ${fieldCls}`}
-              placeholder="担当者名"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold whitespace-nowrap">有効期限：</span>
-            <input
-              type="text"
-              value={expiryDate}
-              onChange={e => setExpiryDate(e.target.value)}
-              placeholder={office === "hplp" ? "発行日より1カ月" : "YYYY/MM/DD"}
-              className={`w-40 ${fieldCls}`}
-            />
-          </div>
-        </div>
-
-        {/* HP/LPフォーマット：合計金額を上部に表示 */}
-        {office === "hplp" && (
-          <div className="mb-4 text-sm flex items-center gap-3">
-            <span className="font-semibold">合計金額(税込）</span>
-            <span className="text-lg font-bold">
-              {total > 0 ? `¥${total.toLocaleString("ja-JP")}` : "¥0"}
-            </span>
-          </div>
-        )}
-
-        {/* 明細テーブル */}
-        <div className="mb-5">
-          <p className="font-bold text-sm mb-2">■明細・金額</p>
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-100">
-                {["No.", "区分", "項目名 / 内容", "期間 / 発行日 / 仕様", "数量", "単位", "単価", "金額"].map(h => (
-                  <th key={h} className="border border-slate-300 px-2 py-1.5 text-center font-semibold whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
-                <th className="border border-slate-300 w-6 print:hidden" />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, idx) => {
-                const amount = calcAmount(item)
-                return (
-                  <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="border border-slate-300 px-2 py-0.5 text-center text-slate-400 w-8">
-                      {idx + 1}
-                    </td>
-                    <td className="border border-slate-300 p-0 w-16">
-                      <input value={item.category} onChange={e => updateItem(item.id, "category", e.target.value)}
-                        className={inputCls} />
-                    </td>
-                    <td className="border border-slate-300 p-0">
-                      <input value={item.name} onChange={e => updateItem(item.id, "name", e.target.value)}
-                        className={inputCls} />
-                    </td>
-                    <td className="border border-slate-300 p-0 w-28">
-                      <input value={item.period} onChange={e => updateItem(item.id, "period", e.target.value)}
-                        className={inputCls} />
-                    </td>
-                    <td className="border border-slate-300 p-0 w-14">
-                      <input type="number" value={item.quantity}
-                        onChange={e => updateItem(item.id, "quantity", e.target.value)}
-                        className={`${inputCls} text-right`} />
-                    </td>
-                    <td className="border border-slate-300 p-0 w-10">
-                      <input value={item.unit} onChange={e => updateItem(item.id, "unit", e.target.value)}
-                        className={`${inputCls} text-center`} />
-                    </td>
-                    <td className="border border-slate-300 p-0 w-24">
-                      <input type="number" value={item.unitPrice}
-                        onChange={e => updateItem(item.id, "unitPrice", e.target.value)}
-                        className={`${inputCls} text-right`} />
-                    </td>
-                    <td className="border border-slate-300 px-2 py-1.5 text-right w-24 font-medium">
-                      {fmtYen(amount)}
-                    </td>
-                    <td className="border border-slate-300 px-1 py-1 text-center print:hidden">
-                      <button onClick={() => setItems(prev => prev.filter(i => i.id !== item.id))}
-                        disabled={items.length <= 1}
-                        className="text-slate-300 hover:text-red-400 disabled:opacity-20 transition-colors">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            <tfoot>
-              {[
-                { label: "小計", value: fmtYen(subtotal) },
-                { label: "消費税（10%）", value: fmtYen(tax) },
-              ].map(({ label, value }) => (
-                <tr key={label}>
-                  <td colSpan={7} className="border border-slate-300 px-2 py-1.5 text-right text-sm">{label}</td>
-                  <td className="border border-slate-300 px-2 py-1.5 text-right text-sm">{value}</td>
-                  <td className="border border-slate-300 print:hidden" />
-                </tr>
-              ))}
-              <tr className="bg-slate-50 font-bold">
-                <td colSpan={7} className="border border-slate-300 px-2 py-2 text-right">
-                  合計金額（税込）
-                </td>
-                <td className="border border-slate-300 px-2 py-2 text-right">
-                  {total > 0 ? `¥${total.toLocaleString("ja-JP")}` : "¥0"}
-                </td>
-                <td className="border border-slate-300 print:hidden" />
-              </tr>
-            </tfoot>
-          </table>
-          <button
-            onClick={() => setItems(prev => [...prev, newItem()])}
-            className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 transition-colors print:hidden"
-          >
-            <Plus className="w-3 h-3" />
-            行を追加
+        {/* ── 操作バー ─────────────────────────────────── */}
+        <div className="flex items-center justify-between mb-3 print:hidden">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <ClipboardList className="w-5 h-5 text-blue-500" />申込書作成
+          </h1>
+          <button onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-sm font-medium">
+            <Printer className="w-4 h-4" />PDF出力・印刷
           </button>
         </div>
 
-        {/* 備考欄（複数行対応） */}
-        <div className="mb-5 text-sm">
-          <p className="font-bold mb-1.5">■備考</p>
-          <div className="space-y-0.5">
-            {bikoRows.map((r, i) => (
-              <div key={r.id} className="flex items-center gap-1">
-                <span className="text-slate-400 text-xs w-4 text-right print:hidden">{i + 1}</span>
-                <input
-                  type="text"
-                  value={r.text}
-                  onChange={e => updBiko(r.id, e.target.value)}
-                  placeholder="備考を入力"
-                  className={`flex-1 ${fieldCls}`}
-                />
-                <button
-                  onClick={() => delBiko(r.id)}
-                  disabled={bikoRows.length <= 1}
-                  className="print:hidden text-slate-300 hover:text-red-400 disabled:opacity-20 ml-1"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+        {/* ── タブ ─────────────────────────────────────── */}
+        <div className="flex border-b border-slate-300 mb-4 print:hidden">
+          {(Object.entries(CFG) as [FT, typeof CFG.hplp][]).map(([key, c]) => (
+            <button key={key} onClick={() => setFt(key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                ft === key ? "border-blue-600 text-blue-600 bg-blue-50" : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ══════════════════════════════════════════════
+            申込書本体（印刷対象）
+        ══════════════════════════════════════════════ */}
+        <div className="bg-white border border-slate-400 pf" style={{ fontSize: "12px" }}>
+
+          {/* 作成日 */}
+          <div className="flex justify-end px-3 py-0.5 text-xs border-b border-slate-300">
+            作成日　{today}
+          </div>
+
+          {/* タイトル */}
+          <div className="text-center font-bold py-1 border-b border-slate-300" style={{ fontSize: "13px" }}>
+            商品申込書
+          </div>
+
+          {/* ヘッダー左右 */}
+          <div className="grid grid-cols-2 border-b border-slate-300">
+            {/* 左：宛先 */}
+            <div className="border-r border-slate-300 px-3 py-1.5 space-y-1 hdr">
+              <div className="flex items-end gap-1">
+                <F v={cust} set={setCust} ph="会社名・お客様名" cls="flex-1 border-b border-slate-400" />
+                <span className="font-bold whitespace-nowrap ml-1">御中</span>
               </div>
-            ))}
+              <div className="flex items-end gap-1">
+                <span className="text-xs whitespace-nowrap">案件名：</span>
+                <F v={proj} set={setProj} ph="案件名" cls="flex-1 border-b border-slate-400" />
+              </div>
+              <div className="text-xs">有効期限：発行日より1カ月</div>
+            </div>
+            {/* 右：発行元 */}
+            <div className="px-3 py-1.5 text-xs space-y-0.5 hdr">
+              <p className="font-bold">株式会社関西ぱど</p>
+              <p>大阪市西区靭本町1丁目6-6　大阪華東ビル3F</p>
+              <p>TEL.06-6729-8101　FAX.06-6729-8102</p>
+              <div className="flex items-end gap-1 mt-0.5">
+                <span className="whitespace-nowrap">担当／</span>
+                <F v={tanto} set={setTanto} ph="担当者名" cls="flex-1 border-b border-slate-400" />
+              </div>
+            </div>
           </div>
-          <button
-            onClick={addBiko}
-            className="print:hidden mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
-          >
-            <Plus className="w-3 h-3" />行を追加
-          </button>
-        </div>
 
-        {/* 支払条件 */}
-        <div className="mb-5 text-sm">
-          <p className="font-bold mb-1.5">■支払条件</p>
-          <div className="flex items-center gap-6">
-            <span>支払条件</span>
-            <span className="ml-4">☑{officeData.payment}</span>
-          </div>
-        </div>
+          {/* HP/LPのみ：合計金額サマリー */}
+          {cfg.showPreTotal && (
+            <div className="flex items-center px-3 py-1 border-b border-slate-300 text-xs bg-slate-50">
+              <span className="font-bold">合計金額（税込）</span>
+              <span className="ml-auto font-bold">{total > 0 ? `¥${fmt(total)}` : "¥0"}</span>
+            </div>
+          )}
 
-        {/* 発注・確認事項 */}
-        <div className="mb-5">
-          <p className="font-bold text-sm mb-2">■発注・契約の申し込み</p>
-          <p className="text-xs text-slate-600 mb-3">
-            下記「確認事項」および、商品ごとに定められた「別紙利用規約・重要事項説明書」の内容を確認し、同意の上で申し込みます。
-          </p>
-          <div className="border border-slate-200 bg-slate-50 rounded p-3 text-xs text-slate-600 space-y-1.5">
-            <p className="font-semibold text-slate-700">【確認事項】</p>
-            <p>1. 契約の成立: 本書は広告掲載および業務委託の申込みとして使用され、株式会社関西ぱど側の承諾によって契約が成立するものとします。</p>
-            <p>2. 反社会的勢力の排除: 申込者が反社会的勢力及び、反社会的勢力に協力・関与していることが判明した場合は申込をお断りいたします。</p>
-            <p>3. 別紙の適用: 本申込書に記載のない事項については、各サービスの利用規約（確認書）または重要事項説明書（別紙）の規定が適用されます。</p>
-            <p>4. 申込者が代表者であること、または代表者より本契約に関する権限を委任されていることを確認・保証の上、申し込むものとします。</p>
+          {/* 明細テーブル */}
+          <div className="px-2 pt-1.5 pb-1 border-b border-slate-300">
+            <p className="text-xs font-bold mb-1">■明細・金額</p>
+            <table className="w-full border-collapse">
+              <colgroup>
+                <col style={{ width: "4%" }} />
+                <col style={{ width: "9%" }} />
+                <col style={{ width: "24%" }} />
+                <col style={{ width: "25%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "6%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "13%" }} />
+                <col className="print:hidden" style={{ width: "2.5rem" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className={thc}>No.</th>
+                  <th className={thc}>区分</th>
+                  <th className={thc}>項目名 / 内容</th>
+                  <th className={thc}>期間 / 発行日 / 仕様</th>
+                  <th className={thc}>数量</th>
+                  <th className={thc}>単位</th>
+                  <th className={thc}>単価</th>
+                  <th className={thc}>金額</th>
+                  <th className={`${thc} print:hidden`}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, idx) => {
+                  const amt = calc(row)
+                  return (
+                    <tr key={row.id}>
+                      <td className={`${td} text-center text-slate-400 py-0.5`}>{idx + 1}</td>
+                      <td className={`${td} p-0`}><CF v={row.cat}    set={v => upd(row.id, "cat",    v)} /></td>
+                      <td className={`${td} p-0`}><CF v={row.name}   set={v => upd(row.id, "name",   v)} /></td>
+                      <td className={`${td} p-0`}><CF v={row.period} set={v => upd(row.id, "period", v)} /></td>
+                      <td className={`${td} p-0`}><CF v={row.qty}    set={v => upd(row.id, "qty",    v)} num center /></td>
+                      <td className={`${td} p-0`}><CF v={row.unit}   set={v => upd(row.id, "unit",   v)} center /></td>
+                      <td className={`${td} p-0`}><CF v={row.price}  set={v => upd(row.id, "price",  v)} num /></td>
+                      <td className={`${td} text-right px-1 py-0.5`}>{amt > 0 ? fmt(amt) : ""}</td>
+                      <td className={`${td} text-center print:hidden`}>
+                        <button onClick={() => setRows(p => p.filter(r => r.id !== row.id))}
+                          disabled={rows.length <= 1}
+                          className="p-0.5 text-slate-300 hover:text-red-400 disabled:opacity-20">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {/* 合計3行 */}
+                {[
+                  ["小計",          fmt(sub)],
+                  ["消費税（10%）",  fmt(tax)],
+                ].map(([label, val]) => (
+                  <tr key={label}>
+                    <td colSpan={6} className={`${td} text-right px-2 py-0.5`}>{label}</td>
+                    <td colSpan={2} className={`${td} text-right px-2 py-0.5`}>{val}</td>
+                    <td className={`${td} print:hidden`} />
+                  </tr>
+                ))}
+                <tr className="bg-slate-50 font-bold">
+                  <td colSpan={6} className={`${td} text-right px-2 py-0.5`}>合計金額（税込）</td>
+                  <td colSpan={2} className={`${td} text-right px-2 py-0.5`}>{fmt(total)}</td>
+                  <td className={`${td} print:hidden`} />
+                </tr>
+              </tbody>
+            </table>
+            <button onClick={() => setRows(p => [...p, newRow()])}
+              className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 print:hidden">
+              <Plus className="w-3 h-3" />行を追加
+            </button>
           </div>
-          <label className="flex items-center gap-2 mt-3 cursor-pointer text-xs">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={e => setAgreed(e.target.checked)}
-              className="w-4 h-4 cursor-pointer"
-            />
-            <span className={agreed ? "text-slate-800 font-medium" : "text-slate-500"}>
-              上記内容および別紙利用規約に同意して発注します。（チェックを入れてください）
-            </span>
-          </label>
-        </div>
 
-        {/* 申込者情報 */}
-        <div className="text-sm">
-          <div className="grid grid-cols-2 gap-x-8 gap-y-3 items-center">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold w-28 whitespace-nowrap">申込日</span>
-              <input type="text" value={orderDate} onChange={e => setOrderDate(e.target.value)}
-                placeholder="YYYY/MM/DD" className={`flex-1 ${fieldCls}`} />
-            </div>
-            <div />
-            <div className="flex items-center gap-2">
-              <span className="font-semibold w-28 whitespace-nowrap">会社名</span>
-              <input type="text" value={orderCompany} onChange={e => setOrderCompany(e.target.value)}
-                className={`flex-1 ${fieldCls}`} />
-            </div>
-            <div className="border border-slate-300 text-center text-slate-400 text-xs py-5">
-              社印
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold w-28 whitespace-nowrap">住所</span>
-              <input type="text" value={orderAddress} onChange={e => setOrderAddress(e.target.value)}
-                className={`flex-1 ${fieldCls}`} />
-            </div>
-            <div />
-            <div className="flex items-center gap-2">
-              <span className="font-semibold w-28 whitespace-nowrap">担当者名</span>
-              <input type="text" value={orderPerson} onChange={e => setOrderPerson(e.target.value)}
-                className={`flex-1 ${fieldCls}`} />
-              <span className="text-slate-400 ml-2">印</span>
-            </div>
-            <div />
-            <div className="flex items-center gap-2">
-              <span className="font-semibold w-28 whitespace-nowrap">連絡先（TEL）</span>
-              <input type="text" value={orderTel} onChange={e => setOrderTel(e.target.value)}
-                className={`flex-1 ${fieldCls}`} />
+          {/* 支払条件 */}
+          <div className="px-3 py-1.5 border-b border-slate-300 text-xs">
+            <p className="font-bold mb-0.5">■支払条件</p>
+            <div className="flex items-start flex-wrap gap-x-4 gap-y-0.5">
+              <span className="font-medium whitespace-nowrap">支払条件</span>
+
+              {/* 画面用チェックボックス */}
+              <label className="flex items-center gap-1 cursor-pointer print:hidden">
+                <input type="checkbox" checked={pay1} onChange={e => setPay1(e.target.checked)} className="w-3.5 h-3.5" />
+                {cfg.pay1}
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer print:hidden flex-wrap">
+                <input type="checkbox" checked={pay2} onChange={e => setPay2(e.target.checked)} className="w-3.5 h-3.5" />
+                {cfg.pay2}（入金期限：
+                <input type="text" value={payDate} onChange={e => setPayDate(e.target.value)}
+                  placeholder="20XX年X月X日" className="border-b border-slate-300 focus:outline-none focus:border-blue-400 bg-transparent w-28" />
+                ）
+              </label>
+
+              {/* 印刷用テキスト */}
+              <span className="hidden print:inline">{pay1 ? "☑" : "□"}&nbsp;{cfg.pay1}　{pay2 ? "☑" : "□"}&nbsp;{cfg.pay2}（入金期限：{payDate || "　　　　　"}）</span>
             </div>
           </div>
-        </div>
+
+          {/* 発注・契約の申し込み */}
+          <div className="px-3 py-1.5 border-b border-slate-300 text-xs">
+            <p className="font-bold mb-0.5">■発注・契約の申し込み</p>
+            <p className="mb-1">下記「確認事項」および、商品ごとに定められた「別紙利用規約・重要事項説明書」の内容を確認し、同意の上で申し込みます。</p>
+            <div className="border border-slate-200 bg-slate-50 p-1.5 space-y-0.5 conf">
+              <p className="font-semibold">【確認事項】</p>
+              <p>1. 契約の成立: 本書は広告掲載および業務委託の申込みとして使用され、株式会社関西ぱど側の承諾によって契約が成立するものとします。</p>
+              <p>2. 反社会的勢力の排除: 申込者が反社会的勢力及び、反社会的勢力に協力・関与していることが判明した場合は申込をお断りいたします。</p>
+              <p>3. 別紙の適用: 本申込書に記載のない事項については、各サービスの利用規約または重要事項説明書（別紙）の規定が適用されます。</p>
+              <p>4. 申込者が代表者であること、または代表者より本契約に関する権限を委任されていることを確認・保証の上、申し込むものとします。</p>
+            </div>
+            <label className="flex items-center gap-2 mt-1.5 cursor-pointer">
+              <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="w-3.5 h-3.5" />
+              <span className={agreed ? "font-medium" : "text-slate-500"}>
+                上記内容および別紙利用規約に同意して発注します。（チェックを入れてください）
+              </span>
+            </label>
+          </div>
+
+          {/* 申込者情報 */}
+          <div className="px-3 py-1.5 text-xs">
+            <div className="grid gap-y-0" style={{ gridTemplateColumns: "7rem 1fr 5rem" }}>
+              {/* 申込日 */}
+              <div className="py-1 font-semibold border-b border-slate-200">申込日</div>
+              <div className="py-1 border-b border-slate-300 col-span-1">
+                <F v={oDate} set={setODate} ph="YYYY/MM/DD" />
+              </div>
+              <div className="row-span-3 border border-slate-300 flex items-center justify-center text-slate-400 ml-4">社印</div>
+
+              {/* 会社名 */}
+              <div className="py-1 font-semibold border-b border-slate-200">会社名</div>
+              <div className="py-1 border-b border-slate-300"><F v={oCo} set={setOCo} /></div>
+
+              {/* 住所 */}
+              <div className="py-1 font-semibold border-b border-slate-200">住所</div>
+              <div className="py-1 border-b border-slate-300"><F v={oAddr} set={setOAddr} /></div>
+
+              {/* 担当者名 */}
+              <div className="py-1 font-semibold border-b border-slate-200">担当者名</div>
+              <div className="py-1 border-b border-slate-300 flex items-end gap-2 col-span-2">
+                <F v={oPer} set={setOPer} cls="flex-1" />
+                <span className="text-slate-400 whitespace-nowrap">印</span>
+              </div>
+
+              {/* 連絡先 */}
+              <div className="py-1 font-semibold">連絡先（TEL）</div>
+              <div className="py-1 border-b border-slate-300 col-span-2"><F v={oTel} set={setOTel} /></div>
+            </div>
+          </div>
+
+        </div>{/* /申込書本体 */}
       </div>
-
-    </div>
+    </>
   )
 }

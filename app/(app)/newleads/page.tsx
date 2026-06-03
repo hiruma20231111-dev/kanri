@@ -47,7 +47,7 @@ function buildEditFields(eriaOptions: string[], gyoshuOptions: string[]): EditFi
 }
 
 function emptyForm(tantoDefault = "") {
-  return { 日付:todayJp(),担当:tantoDefault,企業:"",電話:"",SF:"済〇",商材:"",エリア:"",業種:"",架電結果:"",商談予定:"",受注日:"",商談結果:"",金額:"",備考:"" }
+  return { 日付: new Date().toISOString().slice(0, 10), 担当:tantoDefault,企業:"",電話:"",SF:"済〇",商材:"",エリア:"",業種:"",架電結果:"",商談予定:"",受注日:"",商談結果:"",金額:"",備考:"" }
 }
 
 type EditState = Record<string, string>
@@ -114,7 +114,7 @@ export default function NewLeadsPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   function formToRow(f: typeof form): string[] {
-    return [f.日付,f.担当,f.企業,f.電話,f.SF,f.商材,f.エリア,f.業種,f.架電結果,f.商談予定,f.受注日,f.商談結果,f.金額,f.備考]
+    return [toJp(f.日付),f.担当,f.企業,f.電話,f.SF,f.商材,f.エリア,f.業種,f.架電結果,f.商談予定,f.受注日,f.商談結果,f.金額,f.備考]
   }
 
   async function handleAdd() {
