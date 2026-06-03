@@ -5,17 +5,13 @@ import { useSession } from "next-auth/react"
 import { ClipboardList, Plus, Trash2, Printer } from "lucide-react"
 
 /* ─── フォーム種別 ──────────────────────────────────────── */
-type FT = "hplp" | "monthly" | "server" | "general"
+type FT = "general" | "hplp" | "monthly" | "server"
 
 const CFG = {
-  hplp:    { label: "HP・LP制作費",                showPreTotal: true,  rows: 10,
-             pay1: "20日締め翌月末支払い",          pay2: "着手金",         p1: true,  p2: true  },
-  monthly: { label: "月額保守費",                  showPreTotal: false, rows: 11,
-             pay1: "末日締め翌月末日支払い",         pay2: "前払い",         p1: true,  p2: false },
-  server:  { label: "サーバーレンタル・ドメイン費", showPreTotal: false, rows: 10,
-             pay1: "末日締め翌月10日支払い",         pay2: "前払い",         p1: true,  p2: false },
-  general: { label: "汎用申込書",                   showPreTotal: false, rows: 8,
-             pay1: "末日締め翌月末支払い",            pay2: "",               p1: true,  p2: false },
+  general: { label: "汎用申込書",                   showPreTotal: false, rows: 8  },
+  hplp:    { label: "HP・LP制作費",                 showPreTotal: true,  rows: 10 },
+  monthly: { label: "月額保守費",                   showPreTotal: false, rows: 11 },
+  server:  { label: "サーバーレンタル・ドメイン費", showPreTotal: false, rows: 10 },
 } as const
 
 /* ─── 明細行 ─────────────────────────────────────────────── */
@@ -55,26 +51,27 @@ function CF({ v, set, num = false, center = false }: { v: string; set: (s: strin
 /* ─── メインコンポーネント ────────────────────────────────── */
 export default function ApplicationsPage() {
   const { data: session } = useSession()
-  const [ft,      setFt]      = useState<FT>("hplp")
-  const [cust,    setCust]    = useState("")
-  const [proj,    setProj]    = useState("")
-  const [tanto,   setTanto]   = useState("")
-  const [agreed,  setAgreed]  = useState(false)
-  const [oDate,   setODate]   = useState("")
-  const [oCo,     setOCo]     = useState("")
-  const [oAddr,   setOAddr]   = useState("")
-  const [oPer,    setOPer]    = useState("")
-  const [oTel,    setOTel]    = useState("")
-  const [pay1,    setPay1]    = useState(true)
-  const [pay2,    setPay2]    = useState(false)
-  const [payDate, setPayDate] = useState("")
-  const [rows,    setRows]    = useState<Row[]>(() => makeRows(CFG.hplp.rows))
+  const [ft,       setFt]      = useState<FT>("general")
+  const [cust,     setCust]    = useState("")
+  const [proj,     setProj]    = useState("")
+  const [tanto,    setTanto]   = useState("")
+  const [agreed,   setAgreed]  = useState(false)
+  const [oDate,    setODate]   = useState("")
+  const [oCo,      setOCo]     = useState("")
+  const [oAddr,    setOAddr]   = useState("")
+  const [oPer,     setOPer]    = useState("")
+  const [oTel,     setOTel]    = useState("")
+  const [payText,  setPayText] = useState("")   // 汎用・月額・サーバー用フリーテキスト
+  const [payDate1, setPayDate1] = useState("")  // HP/LP 着手金支払日
+  const [payDate2, setPayDate2] = useState("")  // HP/LP 中間金支払日
+  const [payDate3, setPayDate3] = useState("")  // HP/LP 最終金支払日
+  const [rows,     setRows]    = useState<Row[]>(() => makeRows(CFG.general.rows))
 
   const cfg = CFG[ft]
 
   /* フォーム切替時に支払条件・明細をリセット */
   useEffect(() => {
-    setPay1(cfg.p1); setPay2(cfg.p2); setPayDate("")
+    setPayText(""); setPayDate1(""); setPayDate2(""); setPayDate3("")
     setRows(makeRows(cfg.rows))
   }, [ft])
 
@@ -271,31 +268,43 @@ export default function ApplicationsPage() {
 
           {/* 支払条件 */}
           <div className="px-3 py-1.5 border-b border-slate-300 text-xs">
-            <p className="font-bold mb-0.5">■支払条件</p>
-            <div className="flex items-start flex-wrap gap-x-4 gap-y-0.5">
-              <span className="font-medium whitespace-nowrap">支払条件</span>
-
-              {/* 画面用チェックボックス */}
-              <label className="flex items-center gap-1 cursor-pointer print:hidden">
-                <input type="checkbox" checked={pay1} onChange={e => setPay1(e.target.checked)} className="w-3.5 h-3.5" />
-                {cfg.pay1}
-              </label>
-              {cfg.pay2 && (
-                <label className="flex items-center gap-1 cursor-pointer print:hidden flex-wrap">
-                  <input type="checkbox" checked={pay2} onChange={e => setPay2(e.target.checked)} className="w-3.5 h-3.5" />
-                  {cfg.pay2}（入金期限：
-                  <input type="text" value={payDate} onChange={e => setPayDate(e.target.value)}
-                    placeholder="20XX年X月X日" className="border-b border-slate-300 focus:outline-none focus:border-blue-400 bg-transparent w-28" />
-                  ）
-                </label>
-              )}
-
-              {/* 印刷用テキスト */}
-              <span className="hidden print:inline">
-                {pay1 ? "☑" : "□"}&nbsp;{cfg.pay1}
-                {cfg.pay2 && <>　{pay2 ? "☑" : "□"}&nbsp;{cfg.pay2}（入金期限：{payDate || "　　　　　"}）</>}
-              </span>
-            </div>
+            <p className="font-bold mb-1">■支払条件</p>
+            {ft === "hplp" ? (
+              /* HP・LP制作費：3段階の支払い */
+              <div className="space-y-1">
+                {([
+                  ["着手金（50%）",      payDate1, setPayDate1],
+                  ["中間金（30%）",      payDate2, setPayDate2],
+                  ["納品後最終金（20%）", payDate3, setPayDate3],
+                ] as [string, string, (v: string) => void][]).map(([label, val, setVal]) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <span className="w-32 whitespace-nowrap font-medium">{label}</span>
+                    <span className="whitespace-nowrap">支払日：</span>
+                    {/* 画面 */}
+                    <input type="text" value={val} onChange={e => setVal(e.target.value)}
+                      placeholder="YYYY/MM/DD"
+                      className="border-b border-slate-400 focus:outline-none focus:border-blue-500 bg-transparent w-28 print:hidden" />
+                    {/* 印刷 */}
+                    <span className="hidden print:inline border-b border-slate-400 w-28 inline-block">
+                      {val || " "}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* 汎用・月額・サーバー：フリーテキスト */
+              <div className="flex items-center gap-2">
+                <span className="font-medium whitespace-nowrap">支払条件</span>
+                {/* 画面 */}
+                <input type="text" value={payText} onChange={e => setPayText(e.target.value)}
+                  placeholder="例：末日締め翌月末支払い"
+                  className="flex-1 border-b border-slate-400 focus:outline-none focus:border-blue-500 bg-transparent print:hidden" />
+                {/* 印刷 */}
+                <span className="hidden print:inline flex-1 border-b border-slate-400">
+                  {payText || " "}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* 発注・契約の申し込み */}
