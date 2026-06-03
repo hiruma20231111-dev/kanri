@@ -16,6 +16,11 @@ import {
   PhoneCall,
   ChevronLeft,
   ChevronRight,
+  TrendingUp,
+  UserCheck,
+  Receipt,
+  MessageCircle,
+  ExternalLink,
 } from "lucide-react"
 
 const navItems = [
@@ -27,6 +32,13 @@ const navItems = [
   { href: "/gmail",        label: "Gmail",             icon: Mail },
   { href: "/estimates",    label: "見積書",            icon: FileText },
   { href: "/applications", label: "申込書",            icon: ClipboardList },
+]
+
+const externalLinks = [
+  { href: "https://eigyo.kansaipado.jp/dashboard",                                                                                                                    label: "営業管理",                     icon: TrendingUp    },
+  { href: "https://eigyobucho.kansaipado.jp/login",                                                                                                                   label: "営業部長君",                   icon: UserCheck     },
+  { href: "https://script.google.com/a/macros/kansaipado.co.jp/s/AKfycbxtogEdthTWzTltBnZq5iENqfdBOtdY9DGD_xk8DtB9W4YpN8iuU7Mhf9NpvYGS1f-wOQ/exec",               label: "請求書・領収証 発行・書換 依頼", icon: Receipt       },
+  { href: "https://d2qopozfrwtgu9.cloudfront.net/chat/",                                                                                                              label: "社内チャット",                 icon: MessageCircle },
 ]
 
 interface SidebarProps {
@@ -70,11 +82,7 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
       {session?.user && (
         <div className={`flex items-center gap-3 mx-2 mt-3 bg-slate-800 rounded-lg ${isOpen ? "px-4 py-3" : "justify-center px-1 py-2"}`}>
           {session.user.image && (
-            <img
-              src={session.user.image}
-              alt="avatar"
-              className="w-8 h-8 rounded-full flex-shrink-0"
-            />
+            <img src={session.user.image} alt="avatar" className="w-8 h-8 rounded-full flex-shrink-0" />
           )}
           {isOpen && (
             <div className="min-w-0">
@@ -105,6 +113,34 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
             </Link>
           )
         })}
+
+        {/* 申込書の下：関連ツール */}
+        <div className={`pt-2 ${isOpen ? "" : ""}`}>
+          {isOpen && (
+            <p className="px-3 pb-1 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              関連ツール
+            </p>
+          )}
+          {!isOpen && <div className="border-t border-slate-700 my-1" />}
+          {externalLinks.map(({ href, label, icon: Icon }) => (
+            <a
+              key={href}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={!isOpen ? label : undefined}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors ${
+                !isOpen ? "justify-center" : ""
+              }`}
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              {isOpen && (
+                <span className="truncate flex-1">{label}</span>
+              )}
+              {isOpen && <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-50" />}
+            </a>
+          ))}
+        </div>
       </nav>
 
       {/* ログアウト */}
