@@ -35,7 +35,6 @@ interface EditFieldDef {
 
 function buildEditFields(eriaOptions: string[], gyoshuOptions: string[]): EditFieldDef[] {
   return [
-    { key:"架電日",  label:"架電日",       type: "date",                                        col: C.日付 },
     { key:"エリア",  label:"エリア",       type: eriaOptions.length > 0 ? "select" : "text",   opts: eriaOptions,    col: C.エリア },
     { key:"業種",    label:"業種",         type: gyoshuOptions.length > 0 ? "select" : "text", opts: gyoshuOptions,  col: C.業種 },
     { key:"架電結果",label:"架電結果",     type: "select",  opts: KAKEDEN_OPTIONS,              col: C.架電結果 },
@@ -144,6 +143,7 @@ export default function NewLeadsPage() {
   function openEdit(row: LeadRow) {
     const d = row.data
     const s: EditState = {}
+    s["架電日"] = toIso(d[C.日付] || "")
     buildEditFields(eriaOptions, gyoshuOptions).forEach(f => {
       const v = d[f.col] || ""
       s[f.key] = f.type === "date" ? toIso(v) : v
@@ -158,6 +158,7 @@ export default function NewLeadsPage() {
     try {
       const newData = [...row.data]
       while (newData.length < 14) newData.push("")
+      newData[C.日付] = toJp(editState["架電日"] || "")
       buildEditFields(eriaOptions, gyoshuOptions).forEach(f => {
         const v = editState[f.key] || ""
         newData[f.col] = f.type === "date" ? toJp(v) : v
